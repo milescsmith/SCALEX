@@ -11,18 +11,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from tqdm.autonotebook import trange
-from tqdm.contrib import tenumerate
+from tqdm.autonotebook import tqdm, trange
 from collections import defaultdict
 
-from .layer import *
-from .loss import *
+
+from .layer import Encoder, NN
+from .loss import kl_div
 
 
 class VAE(nn.Module):
     """
     VAE framework
     """
+
     def __init__(self, enc, dec, n_domain=1):
         """
         Parameters
@@ -42,7 +43,7 @@ class VAE(nn.Module):
         self.n_domain = n_domain
         self.x_dim = x_dim
         self.z_dim = z_dim
-    
+
     def load_model(self, path):
         """
         Load trained model parameters dictionary.
@@ -51,24 +52,24 @@ class VAE(nn.Module):
         path
             file path that stores the model parameters
         """
-        pretrained_dict = torch.load(path, map_location=lambda storage, loc: storage)                            
+        pretrained_dict = torch.load(path, map_location=lambda storage, loc: storage)
         model_dict = self.state_dict()
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-        model_dict.update(pretrained_dict) 
+        model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
-        
+
     def encodeBatch(
-            self, 
-            dataloader, 
-            device='cuda', 
-            out='latent', 
-            batch_id=None,
-            return_idx=False, 
-            eval=False
-        ):
+        self,
+        dataloader,
+        device="cuda",
+        out="latent",
+        batch_id=None,
+        return_idx=False,
+        eval=False,
+    ):
         """
         Inference
-        
+
         Parameters
         ----------
         dataloader
@@ -76,64 +77,72 @@ class VAE(nn.Module):
         device
             'cuda' or 'cpu' for . Default: 'cuda'.
         out
-            The inference layer for output. If 'latent', output latent feature z. If 'impute', output imputed gene expression matrix. Default: 'latent'. 
+            The inference layer for output. If 'latent', output latent feature z. If 'impute', output imputed gene expression matrix. Default: 'latent'.
         batch_id
             If None, use batch 0 decoder to infer for all samples. Else, use the corresponding decoder according to the sample batch id to infer for each sample.
         return_idx
             Whether return the dataloader sample index. Default: False.
         eval
             If True, set the model to evaluation mode. If False, set the model to train mode. Default: False.
-        
+
         Returns
         -------
         Inference layer and sample index (if return_idx=True).
         """
         self.to(device)
         if eval:
-            self.eval();print('eval mode')
+            self.eval()
+            print("eval mode")
         else:
             self.train()
         indices = np.zeros(dataloader.dataset.shape[0])
-        if out == 'latent':
+        if out == "latent":
             output = np.zeros((dataloader.dataset.shape[0], self.z_dim))
-            
-            for x,y,idx in dataloader:
+
+            for x, _y, idx in dataloader:
                 x = x.float().to(device)
-                z = self.encoder(x)[1] # z, mu, var
+                z = self.encoder(x)[1]  # z, mu, var
                 output[idx] = z.detach().cpu().numpy()
                 indices[idx] = idx
-        elif out == 'impute':
+        elif out == "impute":
             output = np.zeros((dataloader.dataset.shape[0], self.x_dim))
 
-            if batch_id in dataloader.dataset.adata.obs['batch'].cat.categories:
-                batch_id = list(dataloader.dataset.adata.obs['batch'].cat.categories).index(batch_id)
+            if batch_id in dataloader.dataset.adata.obs["batch"].cat.categories:
+                batch_id = list(
+                    dataloader.dataset.adata.obs["batch"].cat.categories
+                ).index(batch_id)
             else:
                 batch_id = 0
 
-            for x,y,idx in dataloader:
+            for x, _y, idx in dataloader:
                 x = x.float().to(device)
-                z = self.encoder(x)[1] # z, mu, var
-                output[idx] = self.decoder(z, torch.LongTensor([batch_id]*len(z))).detach().cpu().numpy()
+                z = self.encoder(x)[1]  # z, mu, var
+                output[idx] = (
+                    self.decoder(z, torch.LongTensor([batch_id] * len(z)))
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
                 indices[idx] = idx
 
         if return_idx:
             return output, indices
         else:
             return output
-    
+
     def fit(
-            self, 
-            dataloader, 
-            lr=2e-4,
-            max_iteration=30000,
-            beta=0.5,
-            early_stopping=None,
-            device='cuda',  
-            verbose=False,
-        ):
+        self,
+        dataloader,
+        lr=2e-4,
+        max_iteration=30000,
+        beta=0.5,
+        early_stopping=None,
+        device="cuda",
+        verbose=False,
+    ):
         """
         Fit model
-        
+
         Parameters
         ----------
         dataloader
@@ -153,42 +162,51 @@ class VAE(nn.Module):
         """
         self.to(device)
         optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=5e-4)
-        n_epoch = int(np.ceil(max_iteration/len(dataloader)))
-        
-        with trange(n_epoch, total=n_epoch, desc='Epochs') as tq:
+        n_epoch = int(np.ceil(max_iteration / len(dataloader)))
+
+        with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
             for epoch in tq:
-                tk0 = tenumerate(dataloader, total=len(dataloader), leave=False, desc='Iterations', disable=(not verbose))
                 epoch_loss = defaultdict(float)
-                for i, (x, y, idx) in tk0:
+                i = 0
+                for x, y, _idx in (
+                    tk0 := tqdm(
+                        dataloader,
+                        total=len(dataloader),
+                        leave=False,
+                        desc="Iterations",
+                        disable=(not verbose),
+                    )
+                ):
                     x, y = x.float().to(device), y.long().to(device)
 
                     # loss
                     z, mu, var = self.encoder(x)
                     recon_x = self.decoder(z, y)
-                    recon_loss = F.binary_cross_entropy(recon_x, x) * x.size(-1)  ## TO DO
-                    kl_loss = kl_div(mu, var) 
-            
-                    loss = {'recon_loss':recon_loss, 'kl_loss':0.5*kl_loss} 
-                    
+                    recon_loss = F.binary_cross_entropy(recon_x, x) * x.size(
+                        -1
+                    )  ## TO DO
+                    kl_loss = kl_div(mu, var)
+
+                    loss = {"recon_loss": recon_loss, "kl_loss": 0.5 * kl_loss}
+
                     optim.zero_grad()
                     sum(loss.values()).backward()
                     optim.step()
-                    
-                    for k,v in loss.items():
-                        epoch_loss[k] += loss[k].item()
-                        
-                    info = ','.join(['{}={:.3f}'.format(k, v) for k,v in loss.items()])
-                    tk0.set_postfix_str(info)
-                    
 
-                epoch_loss = {k:v/(i+1) for k, v in epoch_loss.items()}
-                epoch_info = ','.join(['{}={:.3f}'.format(k, v) for k,v in epoch_loss.items()])
-                tq.set_postfix_str(epoch_info) 
-                    
+                    for k, _v in loss.items():
+                        epoch_loss[k] += loss[k].item()
+
+                    info = ",".join(["{}={:.3f}".format(k, v) for k, v in loss.items()])
+                    tk0.set_postfix_str(info)
+                    i += 1
+
+                epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
+                epoch_info = ",".join(
+                    ["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()]
+                )
+                tq.set_postfix_str(epoch_info)
+
                 early_stopping(sum(epoch_loss.values()), self)
                 if early_stopping.early_stop:
-                    print('EarlyStopping: run {} epoch'.format(epoch+1))
-                    break       
-                    
-        
-                
+                    print("EarlyStopping: run {} epoch".format(epoch + 1))
+                    break
