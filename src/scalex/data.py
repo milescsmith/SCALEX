@@ -16,7 +16,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.sampler import Sampler
 from torch.utils.data import DataLoader
 
-from anndata import AnnData
+import anndata as ad
 import scanpy as sc
 from sklearn.preprocessing import MaxAbsScaler
 
@@ -119,7 +119,7 @@ def load_files(root):
     """
     if root.split("/")[-1] == "*":
         adata = [load_file(_) for _ in sorted(glob(root))]
-        return AnnData.concat(*adata, batch_key="sub_batch", index_unique=None)
+        return ad.concat(*adata, batch_key="sub_batch", index_unique=None)
     else:
         return load_file(root)
 
@@ -158,12 +158,12 @@ def concat_data(
         return load_files(data_list[0])
     elif isinstance(data_list, str):
         return load_files(data_list)
-    elif isinstance(data_list, AnnData):
+    elif isinstance(data_list, ad.AnnData):
         return data_list
 
     adata_list = []
     for root in data_list:
-        if isinstance(root, AnnData):
+        if isinstance(root, ad.AnnData):
             adata = root
         else:
             adata = load_files(root)
@@ -174,7 +174,7 @@ def concat_data(
     else:
         assert len(adata_list) == len(batch_categories)
     # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
-    concat = AnnData.concatenate(
+    concat = ad.concatenate(
         *adata_list,
         join=join,
         batch_key=batch_key,
@@ -187,7 +187,7 @@ def concat_data(
 
 
 def preprocessing_rna(
-    adata: AnnData,
+    adata: ad.AnnData,
     min_features: int = 600,
     min_cells: int = 3,
     target_sum: int = 10000,
