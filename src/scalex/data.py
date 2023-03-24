@@ -8,7 +8,7 @@
 
 from glob import glob
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final, Iterable, Literal
 
 import anndata as ad
 import numpy as np
@@ -173,7 +173,7 @@ def preprocessing(
     min_features: int = 600,
     min_cells: int = 3,
     target_sum: int | None = None,
-    n_top_features=None,  # or gene list
+    n_top_features: int = 2000,  # or gene list
     backed: bool = False,
     # chunk_size: int = CHUNK_SIZE,
 ) -> ad.AnnData:
@@ -281,7 +281,8 @@ def preprocessing_rna(
 
     adata.raw = adata
     logger.info("Finding variable features")
-    if isinstance(n_top_features, int) and n_top_features > 0:
+    if "highly_variable" in adata.var.columns and n_top_features > 0:
+        
         sc.pp.highly_variable_genes(adata, n_top_genes=n_top_features, batch_key="batch", inplace=False, subset=True)
     else:
         adata = reindex(adata, n_top_features)
@@ -298,7 +299,7 @@ def preprocessing_atac(
     min_features: int = 100,
     min_cells: int = 3,
     target_sum: int = 10000,
-    n_top_features: int | list[str] = 100000,  # or gene list
+    n_top_features: int | list[str] = 10000,  # or gene list
     backed: bool = False,
 ) -> ad.AnnData:
     """
@@ -381,7 +382,7 @@ def batch_scale(adata: ad.AnnData) -> ad.AnnData:
     return adata
 
 
-def reindex(adata: ad.AnnData, genes: list[str]) -> ad.AnnData:  # chunk_size=CHUNK_SIZE):
+def reindex(adata: ad.AnnData, genes: list[str] | None = None) -> ad.AnnData:  # chunk_size=CHUNK_SIZE):
     """
     Reindex AnnData with gene list
 
@@ -396,12 +397,17 @@ def reindex(adata: ad.AnnData, genes: list[str]) -> ad.AnnData:  # chunk_size=CH
     ------
     AnnData
     """
-    idx = [i for i, g in enumerate(genes) if g in adata.var_names]
-    if len(idx) == len(genes):
+    if genes is None:
+        if "highly_variable" not in adata.var.columns:
+            sc.pp.highly_variable_genes(adata, n_top_genes=2000)
+        genes = adata.var_names[adata.var["highly_variable"]].to_list()
+
+    idx = [i for i, g in enumerate(genes) if g in adata.var_names] # type: ignore
+    if len(idx) == len(genes): # type: ignore
         adata = adata[:, genes].copy()
     else:
-        new_x = scipy.sparse.lil_matrix((adata.shape[0], len(genes)))
-        new_x[:, idx] = adata[:, genes[idx]].X
+        new_x = scipy.sparse.lil_matrix((adata.shape[0], len(genes))) # type: ignore
+        new_x[:, idx] = adata[:, genes[idx]].X # type: ignore
         adata = ad.AnnData(new_x.tocsr(), obs=adata.obs, var={"var_names": genes})
     return adata
 
