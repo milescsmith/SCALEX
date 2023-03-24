@@ -84,7 +84,7 @@ def load_file(path):
             adata = sc.read_csv(path).T
         elif path.endswith((".txt", ".txt.gz", ".tsv", ".tsv.gz")):
             df = pd.read_csv(path, sep="\t", index_col=0).T
-            adata = AnnData(
+            adata = ad.AnnData(
                 df.values,
                 {"obs_names": df.index.values},
                 {"var_names": df.columns.values},
@@ -269,7 +269,7 @@ def preprocessing_rna(
 
 
 def preprocessing_atac(
-    adata: AnnData,
+    adata: ad.AnnData,
     min_features: int = 100,
     min_cells: int = 3,
     target_sum=None,
@@ -347,7 +347,7 @@ def preprocessing_atac(
 
 
 def preprocessing(
-    adata: AnnData,
+    adata: ad.AnnData,
     profile: str = "RNA",
     min_features: int = 600,
     min_cells: int = 3,
@@ -459,7 +459,7 @@ def reindex(adata, genes, chunk_size=CHUNK_SIZE):
         new_X[:, idx] = adata[:, genes[idx]].X
         # for i in range(new_X.shape[0]//chunk_size+1):
         # new_X[i*chunk_size:(i+1)*chunk_size, idx] = adata[i*chunk_size:(i+1)*chunk_size, genes[idx]].X
-        adata = AnnData(new_X.tocsr(), obs=adata.obs, var={"var_names": genes})
+        adata = ad.AnnData(new_X.tocsr(), obs=adata.obs, var={"var_names": genes})
     return adata
 
 
