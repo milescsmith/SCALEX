@@ -12,13 +12,16 @@ from pathlib import Path
 from typing import Literal
 
 import anndata as ad
+from pathlib import Path
+
 import numpy as np
 import scanpy as sc
 import torch
-from loguru import logger
+from anndata import AnnData
 from sklearn.metrics import silhouette_score
 
 from scalex.data import load_data
+from scalex.logger import create_logger
 from scalex.metrics import batch_entropy_mixing_score
 from scalex.net.utils import EarlyStopping
 from scalex.net.vae import VAE
@@ -143,6 +146,16 @@ def SCALEX(
     data_list = data_list if isinstance(data_list, list) else [data_list]
     if raw_data_list:
         raw_data_list = raw_data_list if isinstance(raw_data_list, list) else [raw_data_list]
+        outdir = Path(outdir)
+        # outdir = outdir+'/'
+        outdir.joinpath("checkout").mkdir(exists_ok=True)
+        log = create_logger(
+            "SCALEX", fh=outdir.joinpath("log.txt"), overwrite=True
+        )
+    else:
+        log = create_logger("SCALEX")
+    if projection:
+        projection = Path(projection)
 
     if not projection:
         adata, trainloader, testloader = load_data(
@@ -170,6 +183,10 @@ def SCALEX(
         # TODO: if the model exists, why not just reload it?
         early_stopping = EarlyStopping(
             patience=10, checkpoint_file=str(outdir.joinpath("checkpoint", "model.pt")) if outdir else "tmp_model.pt"
+            patience=10,
+            checkpoint_file=outdir.joinpath("checkpoint/model.pt")
+            if outdir
+            else None,
         )
         x_dim = adata.shape[1] if use_layer is None else adata.X.shape[1]
         n_domain = len(adata.obs["batch"].cat.categories)
@@ -189,13 +206,25 @@ def SCALEX(
             verbose=verbose,
         )
         if outdir:
-            config_file = outdir.joinpath("checkpoint/config.pt")
-            torch.save({"n_top_features": adata.var.index, "enc": enc, "dec": dec, "n_domain": n_domain}, config_file)
+            torch.save(
+                {
+                    "n_top_features": adata.var.index,
+                    "enc": enc,
+                    "dec": dec,
+                    "n_domain": n_domain,
+                },
+                outdir.joinpath("checkpoint/config.pt"),
+            )
     else:
-        state = torch.load(projection.joinpath("checkpoint", "config.pt"))
-        n_top_features, enc, dec, n_domain = (state["n_top_features"], state["enc"], state["dec"], state["n_domain"])
+        state = torch.load(projection.joinpath("checkpoint/config.pt"))
+        n_top_features, enc, dec, n_domain = (
+            state["n_top_features"],
+            state["enc"],
+            state["dec"],
+            state["n_domain"],
+        )
         model = VAE(enc, dec, n_domain=n_domain)
-        model.load_model(projection.joinpath("checkpoint", "model.pt"))
+        model.load_model(projection.joinpath("checkpoint/model.pt"))
         model.to(device)
 
         adata, trainloader, testloader = load_data(
@@ -213,19 +242,29 @@ def SCALEX(
             device=device,
         )
 
-    adata.obsm["latent"] = model.encodeBatch(testloader, device=device, evaluate=evaluate)  # save latent rep
+    adata.obsm["latent"] = model.encodeBatch(
+        testloader, device=device, evaluate=evaluate
+    )  # save latent rep
     if impute:
         adata.layers["impute"] = model.encodeBatch(
+            testloader, out="impute", batch_id=impute, device=device, evaluate=evaluate
             testloader, out="impute", batch_id=impute, device=device, evaluate=evaluate
         )
 
     model.to(device)
     del model
     if projection and (not repeat):
-        ref = sc.read(projection.joinpath("adata.h5ad"))
-        adata = ad.concat(adatas=[ref, adata], keys=["reference", "query"], label="projection", index_unique=None)
+        ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
+        adata = AnnData.concatenate(
+            ref,
+            adata,
+            batch_categories=["reference", "query"],
+            batch_key="projection",
+            index_unique=None,
+        )
 
     if outdir is not None:
+        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
 
     if not ignore_umap:  # and adata.shape[0]<1e6:
@@ -252,14 +291,19 @@ def SCALEX(
                 sc.pl.umap(adata, color=color, save=save, wspace=0.4, ncols=4, show=show)
         if assess:
             if len(adata.obs["batch"].cat.categories) > 1:
-                entropy_score = batch_entropy_mixing_score(adata.obsm["X_umap"], adata.obs["batch"])
-                logger.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
+                entropy_score = batch_entropy_mixing_score(
+                    adata.obsm["X_umap"], adata.obs["batch"]
+                )
+                log.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
 
             if "celltype" in adata.obs:
-                sil_score = silhouette_score(adata.obsm["X_umap"], adata.obs["celltype"].cat.codes)
-                logger.info(f"silhouette_score: {sil_score:.3f}")
+                sil_score = silhouette_score(
+                    adata.obsm["X_umap"], adata.obs["celltype"].cat.codes
+                )
+                log.info(f"silhouette_score: {sil_score:.3f}")
 
     if outdir is not None:
+        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
 
     return adata
@@ -291,5 +335,5 @@ def label_transfer(ref, query, rep="latent", label="celltype"):
     y_train = ref.obs[label]
     x_test = query.obsm[rep]
 
-    knn = KNeighborsClassifier().fit(x_train, y_train)
-    return knn.predict(x_test)
+    knn = KNeighborsClassifier().fit(X_train, y_train)
+    return knn.predict(X_test)

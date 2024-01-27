@@ -40,7 +40,12 @@ class DSBatchNorm(nn.Module):
         super().__init__()
         self.n_domain = n_domain
         self.num_features = num_features
-        self.bns = nn.ModuleList([nn.BatchNorm1d(num_features, eps=eps, momentum=momentum) for _ in range(n_domain)])
+        self.bns = nn.ModuleList(
+            [
+                nn.BatchNorm1d(num_features, eps=eps, momentum=momentum)
+                for _ in range(n_domain)
+            ]
+        )
 
     def reset_running_stats(self):
         for bn in self.bns:
