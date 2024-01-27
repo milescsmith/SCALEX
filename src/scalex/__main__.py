@@ -8,9 +8,10 @@
 
 """
 
-import sys
 import argparse
-from .function import SCALEX
+import sys
+
+from scalex.function import SCALEX
 
 
 def main():
@@ -43,7 +44,7 @@ def main():
         repeat=args.repeat,
         verbose=args.verbose,
         assess=args.assess,
-        eval=args.eval,
+        evaluate=args.eval,
         show=args.show,
     )
 
@@ -96,7 +97,7 @@ def parse_args():
 
     if len(sys.argv) == 1:
         parser.print_help()
-        exit()
+        sys.exit()
     else:
         args = parser.parse_args()
         return args

@@ -2,7 +2,8 @@
 
 # __version__ = get_distribution('scalex').version
 import importlib.metadata
-from .function import SCALEX
+
+from scalex.function import SCALEX
 
 __version__ = importlib.metadata.version(__name__)
 __author__ = importlib.metadata.metadata(__name__)["author"]

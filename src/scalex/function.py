@@ -8,51 +8,51 @@
 
 """
 
-import torch
+from pathlib import Path
+
 import numpy as np
-import os
 import scanpy as sc
+import torch
 from anndata import AnnData
-from typing import Union, List
 from sklearn.metrics import silhouette_score
 
-from .data import load_data
-from .net.vae import VAE
-from .net.utils import EarlyStopping
-from .metrics import batch_entropy_mixing_score
-from .logger import create_logger
-from .plot import embedding
+from scalex.data import load_data
+from scalex.logger import create_logger
+from scalex.metrics import batch_entropy_mixing_score
+from scalex.net.utils import EarlyStopping
+from scalex.net.vae import VAE
+from scalex.plot import embedding
 
 
 def SCALEX(
-    data_list: Union[str, AnnData, List] = None,
-    batch_categories: List = None,
+    data_list: str | AnnData | list = None,
+    batch_categories: list | None = None,
     profile: str = "RNA",
     batch_name: str = "batch",
     min_features: int = 600,
     min_cells: int = 3,
-    target_sum: int = None,
-    n_top_features: int = None,
+    target_sum: int | None = None,
+    n_top_features: int | None = None,
     join: str = "inner",
     batch_key: str = "batch",
     processed: bool = False,
-    fraction: float = None,
-    n_obs: int = None,
+    fraction: float | None = None,
+    n_obs: int | None = None,
     batch_size: int = 64,
     lr: float = 2e-4,
     max_iteration: int = 30000,
     seed: int = 124,
     gpu: int = 0,
-    outdir: str = None,
-    projection: str = None,
+    outdir: str | None = None,
+    projection: str | None = None,
     repeat: bool = False,
-    impute: str = None,
+    impute: str | None = None,
     chunk_size: int = 20000,
     ignore_umap: bool = False,
     verbose: bool = False,
     assess: bool = False,
     show: bool = True,
-    eval: bool = False,
+    evaluate: bool = False,
 ) -> AnnData:
     """
     Online single-cell data integration through projecting heterogeneous datasets into a common cell-embedding space
@@ -127,13 +127,16 @@ def SCALEX(
         device = "cpu"
 
     if outdir:
+        outdir = Path(outdir)
         # outdir = outdir+'/'
-        os.makedirs(os.path.join(outdir, "checkpoint"), exist_ok=True)
+        outdir.joinpath("checkout").mkdir(exists_ok=True)
         log = create_logger(
-            "SCALEX", fh=os.path.join(outdir, "log.txt"), overwrite=True
+            "SCALEX", fh=outdir.joinpath("log.txt"), overwrite=True
         )
     else:
         log = create_logger("SCALEX")
+    if projection:
+        projection = Path(projection)
 
     if not projection:
         adata, trainloader, testloader = load_data(
@@ -157,7 +160,7 @@ def SCALEX(
 
         early_stopping = EarlyStopping(
             patience=10,
-            checkpoint_file=os.path.join(outdir, "checkpoint/model.pt")
+            checkpoint_file=outdir.joinpath("checkpoint/model.pt")
             if outdir
             else None,
         )
@@ -186,10 +189,10 @@ def SCALEX(
                     "dec": dec,
                     "n_domain": n_domain,
                 },
-                os.path.join(outdir, "checkpoint/config.pt"),
+                outdir.joinpath("checkpoint/config.pt"),
             )
     else:
-        state = torch.load(os.path.join(projection, "checkpoint/config.pt"))
+        state = torch.load(projection.joinpath("checkpoint/config.pt"))
         n_top_features, enc, dec, n_domain = (
             state["n_top_features"],
             state["enc"],
@@ -197,7 +200,7 @@ def SCALEX(
             state["n_domain"],
         )
         model = VAE(enc, dec, n_domain=n_domain)
-        model.load_model(os.path.join(projection, "checkpoint/model.pt"))
+        model.load_model(projection.joinpath("checkpoint/model.pt"))
         model.to(device)
 
         adata, trainloader, testloader = load_data(
@@ -218,18 +221,18 @@ def SCALEX(
     #         log.info('Processed dataset shape: {}'.format(adata.shape))
 
     adata.obsm["latent"] = model.encodeBatch(
-        testloader, device=device, eval=eval
+        testloader, device=device, evaluate=evaluate
     )  # save latent rep
     if impute:
         adata.layers["impute"] = model.encodeBatch(
-            testloader, out="impute", batch_id=impute, device=device, eval=eval
+            testloader, out="impute", batch_id=impute, device=device, evaluate=evaluate
         )
     # log.info('Output dir: {}'.format(outdir))
 
     model.to("cpu")
     del model
     if projection and (not repeat):
-        ref = sc.read_h5ad(os.path.join(projection, "adata.h5ad"))
+        ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
         adata = AnnData.concatenate(
             ref,
             adata,
@@ -239,7 +242,7 @@ def SCALEX(
         )
 
     if outdir is not None:
-        adata.write(os.path.join(outdir, "adata.h5ad"), compression="gzip")
+        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
 
     if not ignore_umap:  # and adata.shape[0]<1e6:
         log.info("Plot umap")
@@ -272,16 +275,16 @@ def SCALEX(
                 entropy_score = batch_entropy_mixing_score(
                     adata.obsm["X_umap"], adata.obs["batch"]
                 )
-                log.info("batch_entropy_mixing_score: {:.3f}".format(entropy_score))
+                log.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
 
             if "celltype" in adata.obs:
                 sil_score = silhouette_score(
                     adata.obsm["X_umap"], adata.obs["celltype"].cat.codes
                 )
-                log.info("silhouette_score: {:.3f}".format(sil_score))
+                log.info(f"silhouette_score: {sil_score:.3f}")
 
     if outdir is not None:
-        adata.write(os.path.join(outdir, "adata.h5ad"), compression="gzip")
+        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
 
     return adata
 
@@ -312,7 +315,5 @@ def label_transfer(ref, query, rep="latent", label="celltype"):
     y_train = ref.obs[label]
     X_test = query.obsm[rep]
 
-    knn = knn = KNeighborsClassifier().fit(X_train, y_train)
-    y_test = knn.predict(X_test)
-
-    return y_test
+    knn = KNeighborsClassifier().fit(X_train, y_train)
+    return knn.predict(X_test)

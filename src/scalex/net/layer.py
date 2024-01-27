@@ -8,11 +8,9 @@
 
 """
 import numpy as np
-
 import torch
-from torch import nn as nn
+from torch import nn
 from torch.distributions import Normal
-
 
 activation = {
     "relu": nn.ReLU(),
@@ -44,7 +42,7 @@ class DSBatchNorm(nn.Module):
         self.bns = nn.ModuleList(
             [
                 nn.BatchNorm1d(num_features, eps=eps, momentum=momentum)
-                for i in range(n_domain)
+                for _ in range(n_domain)
             ]
         )
 
@@ -56,7 +54,7 @@ class DSBatchNorm(nn.Module):
         for bn in self.bns:
             bn.reset_parameters()
 
-    def _check_input_dim(self, input):
+    def _check_input_dim(self, input_batch):
         raise NotImplementedError
 
     def forward(self, x, y):
@@ -109,7 +107,7 @@ class Block(nn.Module):
         super().__init__()
         self.fc = nn.Linear(input_dim, output_dim)
 
-        if type(norm) == int:
+        if isinstance(norm, int):
             if norm == 1:  # TO DO
                 self.norm = nn.BatchNorm1d(output_dim)
             else:
@@ -119,10 +117,7 @@ class Block(nn.Module):
 
         self.act = activation[act]
 
-        if dropout > 0:
-            self.dropout = nn.Dropout(dropout)
-        else:
-            self.dropout = None
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
 
     def forward(self, x, y=None):
         h = self.fc(x)

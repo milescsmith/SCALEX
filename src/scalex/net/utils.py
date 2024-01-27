@@ -10,6 +10,7 @@
 
 import numpy as np
 import torch
+from loguru import logger
 
 
 def onehot(y, n):
@@ -29,7 +30,9 @@ def onehot(y, n):
     """
     if (y is None) or (n < 2):
         return None
-    assert torch.max(y).item() < n
+    if not torch.max(y).item() < n:
+        msg = "Number of classes is less than or equal to the number of input tensors"
+        raise ValueError(msg)
     y = y.view(y.size(0), 1)
     y_cat = torch.zeros(y.size(0), n).to(y.device)
     y_cat.scatter_(1, y.data, 1)
@@ -68,8 +71,6 @@ class EarlyStopping:
             self.save_checkpoint(loss, model)
         elif score <= self.best_score:
             self.counter += 1
-            if self.verbose:
-                print(f"EarlyStopping counter: {self.counter} out of {self.patience}")
             if self.counter >= self.patience:
                 self.early_stop = True
                 model.load_model(self.checkpoint_file)
@@ -82,10 +83,7 @@ class EarlyStopping:
         """
         Saves model when loss decrease.
         """
-        if self.verbose:
-            print(
-                f"Loss decreased ({self.loss_min:.6f} --> {loss:.6f}).  Saving model ..."
-            )
         if self.checkpoint_file:
+            logger.info(f"Loading saved model from {self.checkpoint_file}")
             torch.save(model.state_dict(), self.checkpoint_file)
         self.loss_min = loss

@@ -7,16 +7,16 @@
 # Description:
 
 """
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from tqdm.autonotebook import tqdm, trange
 from collections import defaultdict
 
+import numpy as np
+import torch
+from torch import nn
+from torch.nn.functional import binary_cross_entropy
+from tqdm.autonotebook import tqdm, trange
 
-from .layer import Encoder, NN
-from .loss import kl_div
+from scalex.net.layer import NN, Encoder
+from scalex.net.loss import kl_div
 
 
 class VAE(nn.Module):
@@ -52,7 +52,7 @@ class VAE(nn.Module):
         path
             file path that stores the model parameters
         """
-        pretrained_dict = torch.load(path, map_location=lambda storage, loc: storage)
+        pretrained_dict = torch.load(path, map_location=lambda storage, loc: storage)  # noqa: ARG005
         model_dict = self.state_dict()
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
@@ -65,7 +65,7 @@ class VAE(nn.Module):
         out="latent",
         batch_id=None,
         return_idx=False,
-        eval=False,
+        evaluate=False,
     ):
         """
         Inference
@@ -90,9 +90,8 @@ class VAE(nn.Module):
         Inference layer and sample index (if return_idx=True).
         """
         self.to(device)
-        if eval:
+        if evaluate:
             self.eval()
-            print("eval mode")
         else:
             self.train()
         indices = np.zeros(dataloader.dataset.shape[0])
@@ -125,17 +124,13 @@ class VAE(nn.Module):
                 )
                 indices[idx] = idx
 
-        if return_idx:
-            return output, indices
-        else:
-            return output
+        return (output, indices) if return_idx else output
 
     def fit(
         self,
         dataloader,
         lr=2e-4,
         max_iteration=30000,
-        beta=0.5,
         early_stopping=None,
         device="cuda",
         verbose=False,
@@ -151,8 +146,6 @@ class VAE(nn.Module):
             Learning rate. Default: 2e-4.
         max_iteration
             Max iterations for training. Training one batch_size samples is one iteration. Default: 30000.
-        beta
-            The co-efficient of KL-divergence when calculate loss. Default: 0.5.
         early_stopping
             EarlyStopping class (definite in utils.py) for stoping the training if loss doesn't improve after a given patience. Default: None.
         device
@@ -165,7 +158,7 @@ class VAE(nn.Module):
         n_epoch = int(np.ceil(max_iteration / len(dataloader)))
 
         with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
-            for epoch in tq:
+            for _epoch in tq:
                 epoch_loss = defaultdict(float)
                 i = 0
                 for x, y, _idx in (
@@ -182,7 +175,7 @@ class VAE(nn.Module):
                     # loss
                     z, mu, var = self.encoder(x)
                     recon_x = self.decoder(z, y)
-                    recon_loss = F.binary_cross_entropy(recon_x, x) * x.size(
+                    recon_loss = binary_cross_entropy(recon_x, x) * x.size(
                         -1
                     )  ## TO DO
                     kl_loss = kl_div(mu, var)
@@ -193,20 +186,19 @@ class VAE(nn.Module):
                     sum(loss.values()).backward()
                     optim.step()
 
-                    for k, _v in loss.items():
+                    for k in loss:
                         epoch_loss[k] += loss[k].item()
 
-                    info = ",".join(["{}={:.3f}".format(k, v) for k, v in loss.items()])
+                    info = ",".join([f"{k}={v:.3f}" for k, v in loss.items()])
                     tk0.set_postfix_str(info)
                     i += 1
 
                 epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
                 epoch_info = ",".join(
-                    ["{}={:.3f}".format(k, v) for k, v in epoch_loss.items()]
+                    [f"{k}={v:.3f}" for k, v in epoch_loss.items()]
                 )
                 tq.set_postfix_str(epoch_info)
 
                 early_stopping(sum(epoch_loss.values()), self)
                 if early_stopping.early_stop:
-                    print("EarlyStopping: run {} epoch".format(epoch + 1))
                     break

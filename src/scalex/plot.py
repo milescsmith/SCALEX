@@ -7,12 +7,11 @@
 # Description:
 
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
-import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, f1_score
+from sklearn.metrics import adjusted_rand_score, confusion_matrix, f1_score, normalized_mutual_info_score
 
 
 def embedding(
@@ -245,8 +244,8 @@ def plot_meta(
         vmin=vmin,
         vmax=vmax,
     )
-    [tick.set_color(c) for tick, c in zip(grid.get_xticklabels(), color)]
-    [tick.set_color(c) for tick, c in zip(grid.get_yticklabels(), color)]
+    [tick.set_color(c) for tick, c in zip(grid.get_xticklabels(), color, strict=False)]
+    [tick.set_color(c) for tick, c in zip(grid.get_yticklabels(), color, strict=False)]
     plt.xticks(rotation=45, horizontalalignment="right", fontsize=fontsize)
     plt.yticks(fontsize=fontsize)
 

@@ -9,3 +9,4 @@ build/
 dist/
 scalex.egg-info/
 docs/_build/
+**/*.h5ad

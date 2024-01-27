@@ -6,40 +6,37 @@
 # Description:
 """
 
-import os
-import numpy as np
-import pandas as pd
-import scipy
-from scipy.sparse import issparse, csr
-
-from torch.utils.data import Dataset
-from torch.utils.data.sampler import Sampler
-from torch.utils.data import DataLoader
+from glob import glob
+from pathlib import Path
 
 import anndata as ad
+import numpy as np
+import pandas as pd
 import scanpy as sc
+import scipy
+from scipy.sparse import csr, issparse
 from sklearn.preprocessing import MaxAbsScaler
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.sampler import Sampler
 
-from glob import glob
-
-np.warnings.filterwarnings("ignore")
-DATA_PATH = os.path.expanduser("~") + "/.scalex/"
+# np.warnings.filterwarnings("ignore")
+DATA_PATH = Path().home().joinpath(".scalex")
 CHUNK_SIZE = 20000
 
 
 def read_mtx(path):
     """\
-    Read mtx format data folder including: 
-    
+    Read mtx format data folder including:
+
         * matrix file: e.g. count.mtx or matrix.mtx or their gz format
         * barcode file: e.g. barcode.txt
         * feature file: e.g. feature.txt
-        
+
     Parameters
     ----------
     path
-        the path store the mtx files  
-        
+        the path store the mtx files
+
     Return
     ------
     AnnData
@@ -62,7 +59,7 @@ def read_mtx(path):
     return adata
 
 
-def load_file(path):
+def load_file(path: str | Path) -> ad.AnnData:
     """
     Load single cell dataset from file
 
@@ -75,28 +72,31 @@ def load_file(path):
     ------
     AnnData
     """
-    if os.path.exists(DATA_PATH + path + ".h5ad"):
-        adata = sc.read_h5ad(DATA_PATH + path + ".h5ad")
-    elif os.path.isdir(path):  # mtx format
-        adata = read_mtx(path)
-    elif os.path.isfile(path):
-        if path.endswith((".csv", ".csv.gz")):
-            adata = sc.read_csv(path).T
-        elif path.endswith((".txt", ".txt.gz", ".tsv", ".tsv.gz")):
-            df = pd.read_csv(path, sep="\t", index_col=0).T
+    data_path = Path(DATA_PATH).joinpath(path)
+    adata_file = Path(DATA_PATH).joinpath(f"{path}.h5ad")
+    if adata_file.exists():
+        adata = sc.read_h5ad(adata_file)
+    elif data_path.is_dir():  # mtx format
+        adata = read_mtx(data_path)
+    elif data_path.is_file():
+        if data_path.suffix in (".csv", ".csv.gz"):
+            adata = sc.read_csv(data_path).T
+        elif data_path.suffix in (".txt", ".txt.gz", ".tsv", ".tsv.gz"):
+            df = pd.read_csv(data_path, sep="\t", index_col=0).T
             adata = ad.AnnData(
                 df.values,
                 {"obs_names": df.index.values},
                 {"var_names": df.columns.values},
             )
-        elif path.endswith(".h5ad"):
-            adata = sc.read_h5ad(path)
-    elif path.endswith((".h5mu/rna", ".h5mu/atac")):
+        elif data_path.suffix(".h5ad"):
+            adata = sc.read_h5ad(data_path)
+    elif data_path.suffix in (".h5mu/rna", ".h5mu/atac"):
         import muon as mu
 
-        adata = mu.read(path)
+        adata = mu.read(data_path)
     else:
-        raise ValueError("File {} not exists".format(path))
+        msg = f"File {data_path} not exists"
+        raise ValueError(msg)
 
     if not issparse(adata.X):
         adata.X = scipy.sparse.csr_matrix(adata.X)
@@ -104,7 +104,7 @@ def load_file(path):
     return adata
 
 
-def load_files(root):
+def load_files(root) -> ad.AnnData:
     """
     Load single cell dataset from files
 
@@ -117,11 +117,10 @@ def load_files(root):
     ------
     AnnData
     """
-    if root.split("/")[-1] == "*":
-        adata = [load_file(_) for _ in sorted(glob(root))]
-        return ad.concat(*adata, batch_key="sub_batch", index_unique=None)
-    else:
+    if root.split("/")[-1] != "*":
         return load_file(root)
+    adata = [load_file(_) for _ in sorted(glob(root))]
+    return ad.concat(*adata, batch_key="sub_batch", index_unique=None)
 
 
 def concat_data(
@@ -163,16 +162,14 @@ def concat_data(
 
     adata_list = []
     for root in data_list:
-        if isinstance(root, ad.AnnData):
-            adata = root
-        else:
-            adata = load_files(root)
+        adata = root if isinstance(root, ad.AnnData) else load_files(root)
         adata_list.append(adata)
 
     if batch_categories is None:
         batch_categories = list(map(str, range(len(adata_list))))
-    else:
-        assert len(adata_list) == len(batch_categories)
+    elif len(adata_list) != len(batch_categories):
+        msg = "The number of adatas to use does not match the number of batches"
+        raise ValueError(msg)
     # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
     concat = ad.concatenate(
         *adata_list,
@@ -225,7 +222,7 @@ def preprocessing_rna(
 
     log.info("Preprocessing") if log else None
     # if not issparse(adata.X):
-    if type(adata.X) != csr.csr_matrix:
+    if not isinstance(adata.X, csr.csr_matrix):
         adata.X = scipy.sparse.csr_matrix(adata.X)
 
     adata = adata[
@@ -243,6 +240,7 @@ def preprocessing_rna(
     log.info("Filtering features") if log else None
     sc.pp.filter_genes(adata, min_cells=min_cells)
 
+    # TODO: allow one to indicate the type of data and then use the appropriate normalization
     log.info("Normalizing total per cell") if log else None
     sc.pp.normalize_total(adata, target_sum=target_sum)
 
@@ -251,7 +249,7 @@ def preprocessing_rna(
 
     adata.raw = adata
     log.info("Finding variable features") if log else None
-    if type(n_top_features) == int and n_top_features > 0:
+    if isinstance(n_top_features, int) and n_top_features > 0:
         sc.pp.highly_variable_genes(
             adata,
             n_top_genes=n_top_features,
@@ -259,12 +257,12 @@ def preprocessing_rna(
             inplace=False,
             subset=True,
         )
-    elif type(n_top_features) != int:
+    elif not isinstance(n_top_features, int):
         adata = reindex(adata, n_top_features)
 
     log.info("Batch specific maxabs scaling") if log else None
     adata = batch_scale(adata, chunk_size=chunk_size)
-    log.info("Processed dataset shape: {}".format(adata.shape)) if log else None
+    log.info(f"Processed dataset shape: {adata.shape}") if log else None
     return adata
 
 
@@ -274,7 +272,7 @@ def preprocessing_atac(
     min_cells: int = 3,
     target_sum=None,
     n_top_features=100000,  # or gene list
-    chunk_size: int = CHUNK_SIZE,
+    # chunk_size: int = CHUNK_SIZE,
     log=None,
 ):
     """
@@ -323,7 +321,7 @@ def preprocessing_atac(
     #     adata.raw = adata
     log.info("Finding variable features") if log else None
     if (
-        type(n_top_features) == int
+        isinstance(n_top_features, int)
         and n_top_features > 0
         and n_top_features < adata.shape[1]
     ):
@@ -331,7 +329,7 @@ def preprocessing_atac(
         epi.pp.select_var_feature(
             adata, nb_features=n_top_features, show=False, copy=False
         )
-    elif type(n_top_features) != int:
+    elif not isinstance(n_top_features,int):
         adata = reindex(adata, n_top_features)
 
     # if log: log.info('Normalizing total per cell')
@@ -342,7 +340,7 @@ def preprocessing_atac(
     #    adata = batch_scale(adata, chunk_size=chunk_size)
     # adata.X = maxabs_scale(adata.X)
     adata.X = MaxAbsScaler().fit_transform(adata.X)
-    log.info("Processed dataset shape: {}".format(adata.shape)) if log else None
+    log.info(f"Processed dataset shape: {adata.shape}") if log else None
     return adata
 
 
@@ -351,7 +349,7 @@ def preprocessing(
     profile: str = "RNA",
     min_features: int = 600,
     min_cells: int = 3,
-    target_sum: int = None,
+    target_sum: int | None = None,
     n_top_features=None,  # or gene list
     chunk_size: int = CHUNK_SIZE,
     log=None,
@@ -400,11 +398,12 @@ def preprocessing(
             min_cells=min_cells,
             target_sum=target_sum,
             n_top_features=n_top_features,
-            chunk_size=chunk_size,
+            # chunk_size=chunk_size,
             log=log,
         )
     else:
-        raise ValueError("Not support profile: `{}` yet".format(profile))
+        msg = f"Not support profile: `{profile}` yet"
+        raise ValueError(msg)
 
 
 def batch_scale(adata, chunk_size=CHUNK_SIZE):
@@ -433,7 +432,7 @@ def batch_scale(adata, chunk_size=CHUNK_SIZE):
     return adata
 
 
-def reindex(adata, genes, chunk_size=CHUNK_SIZE):
+def reindex(adata, genes,) -> ad.AnnData: # chunk_size=CHUNK_SIZE):
     """
     Reindex AnnData with gene list
 
@@ -451,7 +450,6 @@ def reindex(adata, genes, chunk_size=CHUNK_SIZE):
     AnnData
     """
     idx = [i for i, g in enumerate(genes) if g in adata.var_names]
-    print("There are {} gene in selected genes".format(len(idx)))
     if len(idx) == len(genes):
         adata = adata[:, genes]
     else:
@@ -500,7 +498,7 @@ class BatchSampler(Sampler):
                 yield batch[c]
                 batch[c] = []
 
-        for c in batch.keys():
+        for c in batch:
             if len(batch[c]) > 0 and not self.drop_last:
                 yield batch[c]
 
@@ -596,7 +594,7 @@ def load_data(
         An iterable over the given dataset for testing
     """
     adata = concat_data(data_list, batch_categories, join=join, batch_key=batch_key)
-    log.info("Raw dataset shape: {}".format(adata.shape)) if log else None
+    log.info(f"Raw dataset shape: {adata.shape}") if log else None
     if batch_name != "batch":
         if "," in batch_name:
             names = batch_name.split(",")
@@ -609,13 +607,11 @@ def load_data(
         adata.obs["batch"] = "batch"
     adata.obs["batch"] = adata.obs["batch"].astype("category")
     log.info(
-        "There are {} batches under batch_name: {}".format(
-            len(adata.obs["batch"].cat.categories), batch_name
-        )
+        f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}'
     ) if log else None
 
     if isinstance(n_top_features, str):
-        if os.path.isfile(n_top_features):
+        if Path(n_top_features).is_file():
             n_top_features = np.loadtxt(n_top_features, dtype=str)
         else:
             n_top_features = int(n_top_features)
