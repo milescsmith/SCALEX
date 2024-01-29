@@ -72,23 +72,23 @@ def load_file(path: str | Path) -> ad.AnnData:
     ------
     AnnData
     """
-    data_path = Path(DATA_PATH).joinpath(path)
-    adata_file = Path(DATA_PATH).joinpath(f"{path}.h5ad")
+    data_path = Path(path)
+    adata_file = Path(f"{path}.h5ad")
     if adata_file.exists():
         adata = sc.read_h5ad(adata_file)
     elif data_path.is_dir():  # mtx format
         adata = read_mtx(data_path)
     elif data_path.is_file():
-        if data_path.suffix in (".csv", ".csv.gz"):
+        if data_path.suffix in {".csv", ".csv.gz"}:
             adata = sc.read_csv(data_path).T
-        elif data_path.suffix in (".txt", ".txt.gz", ".tsv", ".tsv.gz"):
+        elif data_path.suffix in {".txt", ".txt.gz", ".tsv", ".tsv.gz"}:
             df = pd.read_csv(data_path, sep="\t", index_col=0).T
             adata = ad.AnnData(
                 df.values,
                 {"obs_names": df.index.values},
                 {"var_names": df.columns.values},
             )
-        elif data_path.suffix(".h5ad"):
+        elif data_path.suffix == ".h5ad":
             adata = sc.read_h5ad(data_path)
     elif data_path.suffix in (".h5mu/rna", ".h5mu/atac"):
         import muon as mu
@@ -330,6 +330,17 @@ def preprocessing_atac(
     -------
     The AnnData object after preprocessing.
     """
+    # TODO replace this with snapatac or something from muon
+    # episcanpy requires tbb, which fucks with MacOS
+    # import episcanpy as epi 
+
+    min_features = 100 if min_features is None else min_features
+    n_top_features = 100000 if n_top_features is None else n_top_features
+    target_sum = 10000 if target_sum is None else target_sum
+
+    log.info("Preprocessing") if log else None
+    # if not issparse(adata.X):
+    if type(adata.X) != csr.csr_matrix:
     # TODO replace this with snapatac or something from muon
     # episcanpy requires tbb, which fucks with MacOS
     # import episcanpy as epi

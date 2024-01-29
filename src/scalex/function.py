@@ -148,7 +148,7 @@ def SCALEX(
         raw_data_list = raw_data_list if isinstance(raw_data_list, list) else [raw_data_list]
         outdir = Path(outdir)
         # outdir = outdir+'/'
-        outdir.joinpath("checkout").mkdir(exists_ok=True)
+        outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
         log = create_logger(
             "SCALEX", fh=outdir.joinpath("log.txt"), overwrite=True
         )
@@ -184,7 +184,7 @@ def SCALEX(
         early_stopping = EarlyStopping(
             patience=10, checkpoint_file=str(outdir.joinpath("checkpoint", "model.pt")) if outdir else "tmp_model.pt"
             patience=10,
-            checkpoint_file=outdir.joinpath("checkpoint/model.pt")
+            checkpoint_file=outdir.joinpath("checkpoint", "model.pt")
             if outdir
             else None,
         )
@@ -206,6 +206,7 @@ def SCALEX(
             verbose=verbose,
         )
         if outdir:
+            config_file = outdir.joinpath("checkpoint/config.pt")
             torch.save(
                 {
                     "n_top_features": adata.var.index,
@@ -213,7 +214,7 @@ def SCALEX(
                     "dec": dec,
                     "n_domain": n_domain,
                 },
-                outdir.joinpath("checkpoint/config.pt"),
+                config_file,
             )
     else:
         state = torch.load(projection.joinpath("checkpoint/config.pt"))

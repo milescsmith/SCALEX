@@ -175,6 +175,8 @@ class VAE(nn.Module):
                 ):
                     _x, _y = x.float().to(device), y.long().to(device)
 
+                    x, y = x.float().to(device), y.long().to(device)
+
                     # loss
                     z, mu, var = self.encoder(x)
                     recon_x = self.decoder(z, y)
