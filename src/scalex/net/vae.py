@@ -170,6 +170,7 @@ class VAE(nn.Module):
                         disable=(not verbose),
                     )
                 ):
+
                     x, y = x.float().to(device), y.long().to(device)
 
                     # loss

@@ -123,13 +123,15 @@ def SCALEX(
     if torch.cuda.is_available():  # cuda device
         device = "cuda"
         torch.cuda.set_device(gpu)
+    elif torch.backends.mps.is_available():
+        device = "mps"
     else:
         device = "cpu"
 
     if outdir:
         outdir = Path(outdir)
         # outdir = outdir+'/'
-        outdir.joinpath("checkout").mkdir(exists_ok=True)
+        outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
         log = create_logger(
             "SCALEX", fh=outdir.joinpath("log.txt"), overwrite=True
         )
@@ -158,9 +160,10 @@ def SCALEX(
             log=log,
         )
 
+        # TODO: if the model exists, why not just reload it?
         early_stopping = EarlyStopping(
             patience=10,
-            checkpoint_file=outdir.joinpath("checkpoint/model.pt")
+            checkpoint_file=outdir.joinpath("checkpoint", "model.pt")
             if outdir
             else None,
         )
@@ -182,6 +185,7 @@ def SCALEX(
             verbose=verbose,
         )
         if outdir:
+            config_file = outdir.joinpath("checkpoint/config.pt")
             torch.save(
                 {
                     "n_top_features": adata.var.index,
@@ -189,7 +193,7 @@ def SCALEX(
                     "dec": dec,
                     "n_domain": n_domain,
                 },
-                outdir.joinpath("checkpoint/config.pt"),
+                config_file,
             )
     else:
         state = torch.load(projection.joinpath("checkpoint/config.pt"))

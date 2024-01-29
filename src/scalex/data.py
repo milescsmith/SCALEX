@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import Sampler
 
 # np.warnings.filterwarnings("ignore")
-DATA_PATH = Path().home().joinpath(".scalex")
+
 CHUNK_SIZE = 20000
 
 
@@ -72,23 +72,23 @@ def load_file(path: str | Path) -> ad.AnnData:
     ------
     AnnData
     """
-    data_path = Path(DATA_PATH).joinpath(path)
-    adata_file = Path(DATA_PATH).joinpath(f"{path}.h5ad")
+    data_path = Path(path)
+    adata_file = Path(f"{path}.h5ad")
     if adata_file.exists():
         adata = sc.read_h5ad(adata_file)
     elif data_path.is_dir():  # mtx format
         adata = read_mtx(data_path)
     elif data_path.is_file():
-        if data_path.suffix in (".csv", ".csv.gz"):
+        if data_path.suffix in {".csv", ".csv.gz"}:
             adata = sc.read_csv(data_path).T
-        elif data_path.suffix in (".txt", ".txt.gz", ".tsv", ".tsv.gz"):
+        elif data_path.suffix in {".txt", ".txt.gz", ".tsv", ".tsv.gz"}:
             df = pd.read_csv(data_path, sep="\t", index_col=0).T
             adata = ad.AnnData(
                 df.values,
                 {"obs_names": df.index.values},
                 {"var_names": df.columns.values},
             )
-        elif data_path.suffix(".h5ad"):
+        elif data_path.suffix == ".h5ad":
             adata = sc.read_h5ad(data_path)
     elif data_path.suffix in (".h5mu/rna", ".h5mu/atac"):
         import muon as mu
@@ -299,7 +299,9 @@ def preprocessing_atac(
     -------
     The AnnData object after preprocessing.
     """
-    import episcanpy as epi
+    # TODO replace this with snapatac or something from muon
+    # episcanpy requires tbb, which fucks with MacOS
+    # import episcanpy as epi 
 
     min_features = 100 if min_features is None else min_features
     n_top_features = 100000 if n_top_features is None else n_top_features
@@ -326,9 +328,10 @@ def preprocessing_atac(
         and n_top_features < adata.shape[1]
     ):
         # sc.pp.highly_variable_genes(adata, n_top_genes=n_top_features, batch_key='batch', inplace=False, subset=True)
-        epi.pp.select_var_feature(
-            adata, nb_features=n_top_features, show=False, copy=False
-        )
+        # epi.pp.select_var_feature(
+        #     adata, nb_features=n_top_features, show=False, copy=False
+        # )
+        pass
     elif not isinstance(n_top_features,int):
         adata = reindex(adata, n_top_features)
 
@@ -489,7 +492,7 @@ class BatchSampler(Sampler):
         batch = {}
         sampler = np.random.permutation(len(self.batch_id))
         for idx in sampler:
-            c = self.batch_id[idx]
+            c = self.batch_id.iloc[idx]
             if c not in batch:
                 batch[c] = []
             batch[c].append(idx)
@@ -534,7 +537,7 @@ class SingleCellDataset(Dataset):
             x = self.adata.X[idx].squeeze()
         else:
             x = self.adata.X[idx].toarray().squeeze()
-        domain_id = self.adata.obs["batch"].cat.codes[idx]
+        domain_id = self.adata.obs["batch"].cat.codes.iloc[idx]
         return x, domain_id, idx
 
 

@@ -10,3 +10,7 @@ dist/
 scalex.egg-info/
 docs/_build/
 **/*.h5ad
+**/*.pt
+**/*.txt
+**/*.json
+debug.py
