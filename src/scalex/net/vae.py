@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn.functional import binary_cross_entropy
-from tqdm.autonotebook import tqdm, trange
+from tqdm.auto import tqdm, trange
 
 from scalex.net.layer import NN, Encoder
 from scalex.net.loss import kl_div
@@ -195,10 +195,10 @@ class VAE(nn.Module):
                     i += 1
 
                 epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
-                epoch_info = ",".join(
-                    [f"{k}={v:.3f}" for k, v in epoch_loss.items()]
-                )
-                tq.set_postfix_str(epoch_info)
+                # epoch_info = ",".join(
+                #     [f"{k}={v:.3f}" for k, v in epoch_loss.items()]
+                # )
+                # tq.set_postfix_str(epoch_info)
 
                 early_stopping(sum(epoch_loss.values()), self)
                 if early_stopping.early_stop:

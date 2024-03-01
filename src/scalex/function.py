@@ -127,6 +127,7 @@ def SCALEX(
         device = "mps"
     else:
         device = "cpu"
+    torch.set_default_device(device)
 
     if outdir:
         outdir = Path(outdir)
@@ -158,6 +159,7 @@ def SCALEX(
             batch_name=batch_name,
             batch_key=batch_key,
             log=log,
+            device=device
         )
 
         # TODO: if the model exists, why not just reload it?
@@ -221,6 +223,7 @@ def SCALEX(
             batch_name=batch_name,
             batch_key=batch_key,
             log=log,
+            device=device
         )
     #         log.info('Processed dataset shape: {}'.format(adata.shape))
 
@@ -233,7 +236,7 @@ def SCALEX(
         )
     # log.info('Output dir: {}'.format(outdir))
 
-    model.to("cpu")
+    model.to(device)
     del model
     if projection and (not repeat):
         ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
