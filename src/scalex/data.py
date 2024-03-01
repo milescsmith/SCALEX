@@ -90,7 +90,7 @@ def load_file(path: str | Path) -> ad.AnnData:
             )
         elif data_path.suffix == ".h5ad":
             adata = sc.read_h5ad(data_path)
-    elif data_path.suffix in (".h5mu/rna", ".h5mu/atac"):
+    elif data_path.suffix in {".h5mu/rna", ".h5mu/atac"}:
         import muon as mu
 
         adata = mu.read(data_path)
@@ -676,9 +676,10 @@ def process_batch_ident(batch_name: str, adata: ad.AnnData) -> None:
         )
     scdata = SingleCellDataset(adata)  # Wrap AnnData into Pytorch Dataset
     trainloader = DataLoader(
-        scdata, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=4
+        scdata, batch_size=batch_size, drop_last=True, num_workers=4, #shuffle=True
+        generator=Generator(device=device),
     )
     batch_sampler = BatchSampler(batch_size, adata.obs["batch"], drop_last=False)
-    testloader = DataLoader(scdata, batch_sampler=batch_sampler)
+    testloader = DataLoader(scdata, batch_sampler=batch_sampler,generator=Generator(device=device),)
 
     return adata, trainloader, testloader
