@@ -262,7 +262,8 @@ def preprocessing_rna(
         adata = reindex(adata, n_top_features)
 
     log.info("Batch specific maxabs scaling") if log else None
-    adata = batch_scale(adata, chunk_size=chunk_size)
+    # adata = batch_scale(adata, chunk_size=chunk_size)
+    adata.X = MaxAbsScaler().fit_transform(adata.X)
     log.info(f"Processed dataset shape: {adata.shape}") if log else None
     return adata
 
@@ -428,10 +429,11 @@ def batch_scale(adata, chunk_size=CHUNK_SIZE):
     for b in adata.obs["batch"].unique():
         idx = np.where(adata.obs["batch"] == b)[0]
         scaler = MaxAbsScaler(copy=False).fit(adata.X[idx])
-        for i in range(len(idx) // chunk_size + 1):
-            adata.X[idx[i * chunk_size : (i + 1) * chunk_size]] = scaler.transform(
-                adata.X[idx[i * chunk_size : (i + 1) * chunk_size]]
-            )
+        adata.X[idx] = scaler.transform(adata.X[idx])
+        # for i in range(len(idx) // chunk_size + 1):
+        #     adata.X[idx[i * chunk_size : (i + 1) * chunk_size]] = scaler.transform(
+        #         adata.X[idx[i * chunk_size : (i + 1) * chunk_size]]
+        #     )
 
     return adata
 
