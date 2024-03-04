@@ -39,12 +39,7 @@ class DSBatchNorm(nn.Module):
         super().__init__()
         self.n_domain = n_domain
         self.num_features = num_features
-        self.bns = nn.ModuleList(
-            [
-                nn.BatchNorm1d(num_features, eps=eps, momentum=momentum)
-                for _ in range(n_domain)
-            ]
-        )
+        self.bns = nn.ModuleList([nn.BatchNorm1d(num_features, eps=eps, momentum=momentum) for _ in range(n_domain)])
 
     def reset_running_stats(self):
         for bn in self.bns:
@@ -58,9 +53,7 @@ class DSBatchNorm(nn.Module):
         raise NotImplementedError
 
     def forward(self, x, y):
-        out = torch.zeros(
-            x.size(0), self.num_features, device=x.device
-        )  # , requires_grad=False)
+        out = torch.zeros(x.size(0), self.num_features, device=x.device)  # , requires_grad=False)
         for i in range(self.n_domain):
             indices = np.where(y.cpu().numpy() == i)[0]
 

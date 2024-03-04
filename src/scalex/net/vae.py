@@ -11,8 +11,9 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from loguru import logger
 from torch import nn
-from torch.nn.functional import binary_cross_entropy
+from torch.nn.functional import binary_cross_entropy  # , cosine_similarity
 from tqdm.auto import tqdm, trange
 
 from scalex.net.layer import NN, Encoder
@@ -98,30 +99,23 @@ class VAE(nn.Module):
         if out == "latent":
             output = np.zeros((dataloader.dataset.shape[0], self.z_dim))
 
-            for x, _y, idx in dataloader:
-                x = x.float().to(device)
-                z = self.encoder(x)[1]  # z, mu, var
+            for x, _, idx in dataloader:
+                _x = x.float().to(device)
+                z = self.encoder(_x)[1]  # z, mu, var
                 output[idx] = z.detach().cpu().numpy()
                 indices[idx] = idx
         elif out == "impute":
             output = np.zeros((dataloader.dataset.shape[0], self.x_dim))
 
             if batch_id in dataloader.dataset.adata.obs["batch"].cat.categories:
-                batch_id = list(
-                    dataloader.dataset.adata.obs["batch"].cat.categories
-                ).index(batch_id)
+                batch_id = list(dataloader.dataset.adata.obs["batch"].cat.categories).index(batch_id)
             else:
                 batch_id = 0
 
-            for x, _y, idx in dataloader:
-                x = x.float().to(device)
-                z = self.encoder(x)[1]  # z, mu, var
-                output[idx] = (
-                    self.decoder(z, torch.LongTensor([batch_id] * len(z)))
-                    .detach()
-                    .cpu()
-                    .numpy()
-                )
+            for x, _, idx in dataloader:
+                _x = x.float().to(device)
+                z = self.encoder(_x)[1]  # z, mu, var
+                output[idx] = self.decoder(z, torch.LongTensor([batch_id] * len(z))).detach().cpu().numpy()
                 indices[idx] = idx
 
         return (output, indices) if return_idx else output
@@ -171,14 +165,12 @@ class VAE(nn.Module):
                     )
                 ):
 
-                    x, y = x.float().to(device), y.long().to(device)
+                    _x, _y = x.float().to(device), y.long().to(device)
 
                     # loss
-                    z, mu, var = self.encoder(x)
-                    recon_x = self.decoder(z, y)
-                    recon_loss = binary_cross_entropy(recon_x, x) * x.size(
-                        -1
-                    )  ## TO DO
+                    z, mu, var = self.encoder(_x)
+                    recon_x = self.decoder(z, _y)
+                    recon_loss = binary_cross_entropy(recon_x, _x) * _x.size(-1)  ## TO DO
                     kl_loss = kl_div(mu, var)
 
                     loss = {"recon_loss": recon_loss, "kl_loss": 0.5 * kl_loss}
@@ -195,11 +187,15 @@ class VAE(nn.Module):
                     i += 1
 
                 epoch_loss = {k: v / (i + 1) for k, v in epoch_loss.items()}
-                # epoch_info = ",".join(
-                #     [f"{k}={v:.3f}" for k, v in epoch_loss.items()]
-                # )
-                # tq.set_postfix_str(epoch_info)
 
                 early_stopping(sum(epoch_loss.values()), self)
                 if early_stopping.early_stop:
+                    logger.info(f"EarlyStopping: run {_epoch+1} epoch")
                     break
+
+
+# this isn't used, but keeping it to better match upstream
+# def pearson_corr_coef(x, y, dim = 1, reduce_dims = (-1,)):
+#     x_centered = x - x.mean(dim = dim, keepdim = True)
+#     y_centered = y - y.mean(dim = dim, keepdim = True)
+#     return cosine_similarity(x_centered, y_centered, dim = dim).mean(dim = reduce_dims)

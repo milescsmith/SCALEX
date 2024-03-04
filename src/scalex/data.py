@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import scipy
+from loguru import logger
 from scipy.sparse import csr, issparse
 from sklearn.preprocessing import MaxAbsScaler
 from torch import Generator
@@ -43,9 +44,7 @@ def read_mtx(path):
     AnnData
     """
     for filename in glob(path + "/*"):
-        if ("count" in filename or "matrix" in filename or "data" in filename) and (
-            "mtx" in filename
-        ):
+        if ("count" in filename or "matrix" in filename or "data" in filename) and ("mtx" in filename):
             adata = sc.read_mtx(filename).T
     for filename in glob(path + "/*"):
         if "barcode" in filename:
@@ -190,8 +189,6 @@ def preprocessing_rna(
     min_cells: int = 3,
     target_sum: int = 10000,
     n_top_features=2000,  # or gene list
-    chunk_size: int = CHUNK_SIZE,
-    log=None,
 ):
     """
     Preprocessing single-cell RNA-seq data
@@ -210,8 +207,6 @@ def preprocessing_rna(
         Number of highly-variable genes to keep. Default: 2000.
     chunk_size
         Number of samples from the same batch to transform. Default: 20000.
-    log
-        If log, record each operation in the log file. Default: None.
 
     Return
     -------
@@ -221,35 +216,31 @@ def preprocessing_rna(
     n_top_features = 2000 if n_top_features is None else n_top_features
     target_sum = 10000 if target_sum is None else target_sum
 
-    log.info("Preprocessing") if log else None
+    logger.info("Preprocessing")
     # if not issparse(adata.X):
     if not isinstance(adata.X, csr.csr_matrix):
         adata.X = scipy.sparse.csr_matrix(adata.X)
 
     adata = adata[
         :,
-        [
-            gene
-            for gene in adata.var_names
-            if not str(gene).startswith(("ERCC", "MT-", "mt-"))
-        ],
+        [gene for gene in adata.var_names if not str(gene).startswith(("ERCC", "MT-", "mt-"))],
     ]
 
-    log.info("Filtering cells") if log else None
+    logger.info("Filtering cells")
     sc.pp.filter_cells(adata, min_genes=min_features)
 
-    log.info("Filtering features") if log else None
+    logger.info("Filtering features")
     sc.pp.filter_genes(adata, min_cells=min_cells)
 
     # TODO: allow one to indicate the type of data and then use the appropriate normalization
-    log.info("Normalizing total per cell") if log else None
+    logger.info("Normalizing total per cell")
     sc.pp.normalize_total(adata, target_sum=target_sum)
 
-    log.info("Log1p transforming") if log else None
+    logger.info("Log1p transforming")
     sc.pp.log1p(adata)
 
     adata.raw = adata
-    log.info("Finding variable features") if log else None
+    logger.info("Finding variable features")
     if isinstance(n_top_features, int) and n_top_features > 0:
         sc.pp.highly_variable_genes(
             adata,
@@ -261,10 +252,10 @@ def preprocessing_rna(
     elif not isinstance(n_top_features, int):
         adata = reindex(adata, n_top_features)
 
-    log.info("Batch specific maxabs scaling") if log else None
+    logger.info("Batch specific maxabs scaling")
     # adata = batch_scale(adata, chunk_size=chunk_size)
     adata.X = MaxAbsScaler().fit_transform(adata.X)
-    log.info(f"Processed dataset shape: {adata.shape}") if log else None
+    logger.info(f"Processed dataset shape: {adata.shape}")
     return adata
 
 
@@ -274,8 +265,6 @@ def preprocessing_atac(
     min_cells: int = 3,
     target_sum=None,
     n_top_features=100000,  # or gene list
-    # chunk_size: int = CHUNK_SIZE,
-    log=None,
 ):
     """
     Preprocessing single-cell ATAC-seq
@@ -294,8 +283,6 @@ def preprocessing_atac(
         Number of highly-variable features to keep. Default: 30000.
     chunk_size
         Number of samples from the same batch to transform. Default: 20000.
-    log
-        If log, record each operation in the log file. Default: None.
 
     Return
     -------
@@ -303,49 +290,38 @@ def preprocessing_atac(
     """
     # TODO replace this with snapatac or something from muon
     # episcanpy requires tbb, which fucks with MacOS
-    # import episcanpy as epi 
+    # import episcanpy as epi
 
     min_features = 100 if min_features is None else min_features
     n_top_features = 100000 if n_top_features is None else n_top_features
     target_sum = 10000 if target_sum is None else target_sum
 
-    log.info("Preprocessing") if log else None
+    logger.info("Preprocessing")
     # if not issparse(adata.X):
     if type(adata.X) != csr.csr_matrix:
         adata.X = scipy.sparse.csr_matrix(adata.X)
 
-    adata.X[adata.X > 1] = 1
+    sc.pp.normalize_total(adata, target_sum=target_sum)
+    sc.pp.log1p(adata)
 
-    log.info("Filtering cells") if log else None
+    logger.info("Filtering cells")
+
     sc.pp.filter_cells(adata, min_genes=min_features)
 
-    log.info("Filtering features") if log else None
+    logger.info("Filtering features")
     sc.pp.filter_genes(adata, min_cells=min_cells)
 
     #     adata.raw = adata
-    log.info("Finding variable features") if log else None
-    if (
-        isinstance(n_top_features, int)
-        and n_top_features > 0
-        and n_top_features < adata.shape[1]
-    ):
-        # sc.pp.highly_variable_genes(adata, n_top_genes=n_top_features, batch_key='batch', inplace=False, subset=True)
-        # epi.pp.select_var_feature(
-        #     adata, nb_features=n_top_features, show=False, copy=False
-        # )
+    logger.info("Finding variable features")
+    if isinstance(n_top_features, int) and n_top_features > 0 and n_top_features < adata.shape[1]:
         pass
-    elif not isinstance(n_top_features,int):
+    elif not isinstance(n_top_features, int):
         adata = reindex(adata, n_top_features)
 
-    # if log: log.info('Normalizing total per cell')
-    # if target_sum != -1:
-    sc.pp.normalize_total(adata, target_sum=target_sum)
-
-    # if log: log.info('Batch specific maxabs scaling')
-    #    adata = batch_scale(adata, chunk_size=chunk_size)
-    # adata.X = maxabs_scale(adata.X)
+    logger.info("Batch specific maxabs scaling")
+    # adata = batch_scale(adata, chunk_size=chunk_size)
     adata.X = MaxAbsScaler().fit_transform(adata.X)
-    log.info(f"Processed dataset shape: {adata.shape}") if log else None
+    logger.info(f"Processed dataset shape: {adata.shape}")
     return adata
 
 
@@ -356,6 +332,7 @@ def preprocessing(
     min_cells: int = 3,
     target_sum: int | None = None,
     n_top_features=None,  # or gene list
+    backed: bool = False,
     chunk_size: int = CHUNK_SIZE,
     log=None,
 ):
@@ -393,6 +370,7 @@ def preprocessing(
             min_cells=min_cells,
             target_sum=target_sum,
             n_top_features=n_top_features,
+            backed=backed,
             chunk_size=chunk_size,
             log=log,
         )
@@ -403,7 +381,8 @@ def preprocessing(
             min_cells=min_cells,
             target_sum=target_sum,
             n_top_features=n_top_features,
-            # chunk_size=chunk_size,
+            chunk_size=chunk_size,
+            backed=backed,
             log=log,
         )
     else:
@@ -411,7 +390,7 @@ def preprocessing(
         raise ValueError(msg)
 
 
-def batch_scale(adata, chunk_size=CHUNK_SIZE):
+def batch_scale(adata: ad.AnnData) -> ad.AnnData:
     """
     Batch-specific scale data
 
@@ -419,8 +398,6 @@ def batch_scale(adata, chunk_size=CHUNK_SIZE):
     ----------
     adata
         AnnData
-    chunk_size
-        chunk large data into small chunks
 
     Return
     ------
@@ -430,15 +407,14 @@ def batch_scale(adata, chunk_size=CHUNK_SIZE):
         idx = np.where(adata.obs["batch"] == b)[0]
         scaler = MaxAbsScaler(copy=False).fit(adata.X[idx])
         adata.X[idx] = scaler.transform(adata.X[idx])
-        # for i in range(len(idx) // chunk_size + 1):
-        #     adata.X[idx[i * chunk_size : (i + 1) * chunk_size]] = scaler.transform(
-        #         adata.X[idx[i * chunk_size : (i + 1) * chunk_size]]
-        #     )
 
     return adata
 
 
-def reindex(adata, genes,) -> ad.AnnData: # chunk_size=CHUNK_SIZE):
+def reindex(
+    adata: ad.AnnData,
+    genes: list[str],
+) -> ad.AnnData:  # chunk_size=CHUNK_SIZE):
     """
     Reindex AnnData with gene list
 
@@ -448,8 +424,6 @@ def reindex(adata, genes,) -> ad.AnnData: # chunk_size=CHUNK_SIZE):
         AnnData
     genes
         gene list for indexing
-    chunk_size
-        chunk large data into small chunks
 
     Return
     ------
@@ -461,8 +435,6 @@ def reindex(adata, genes,) -> ad.AnnData: # chunk_size=CHUNK_SIZE):
     else:
         new_X = scipy.sparse.lil_matrix((adata.shape[0], len(genes)))
         new_X[:, idx] = adata[:, genes[idx]].X
-        # for i in range(new_X.shape[0]//chunk_size+1):
-        # new_X[i*chunk_size:(i+1)*chunk_size, idx] = adata[i*chunk_size:(i+1)*chunk_size, genes[idx]].X
         adata = ad.AnnData(new_X.tocsr(), obs=adata.obs, var={"var_names": genes})
     return adata
 
@@ -520,7 +492,7 @@ class SingleCellDataset(Dataset):
     Dataloader of single-cell data
     """
 
-    def __init__(self, adata):
+    def __init__(self, adata, use_layer="X"):
         """
         create a SingleCellDataset object
 
@@ -531,15 +503,23 @@ class SingleCellDataset(Dataset):
         """
         self.adata = adata
         self.shape = adata.shape
+        self.use_layer = use_layer
 
     def __len__(self):
-        return self.adata.X.shape[0]
+        return self.adata.shape[0]
 
     def __getitem__(self, idx):
-        if isinstance(self.adata.X[idx], np.ndarray):
-            x = self.adata.X[idx].squeeze()
+        if self.use_layer == "X":
+            x = (
+                self.adata.X[idx].squeeze().astype(float)
+                if isinstance(self.adata.X[idx], np.ndarray)
+                else self.adata.X[idx].toarray().squeeze().astype(float)
+            )
+        elif self.use_layer in self.adata.layers:
+            x = self.adata.layers[self.use_layer][idx]
         else:
-            x = self.adata.X[idx].toarray().squeeze()
+            x = self.adata.obsm[self.use_layer][idx]
+
         domain_id = self.adata.obs["batch"].cat.codes.iloc[idx]
         return x, domain_id, idx
 
@@ -555,13 +535,15 @@ def load_data(
     min_cells=3,
     target_sum=None,
     n_top_features=None,
-    batch_size=64,
+    backed: bool = False,
+    batch_size: int = 64,
     chunk_size=CHUNK_SIZE,
     fraction=None,
-    n_obs=None,
+    n_obs: int | None = None,
     processed=False,
-    log=None,
-    device="cpu"
+    device: str = "cpu",
+    num_workers: int = 4,
+    use_layer: str = "X",
 ):
     """
     Load dataset with preprocessing
@@ -588,8 +570,6 @@ def load_data(
         Number of samples per batch to load. Default: 64.
     chunk_size
         Number of samples from the same batch to transform. Default: 20000.
-    log
-        If log, record each operation in the log file. Default: None.
 
     Returns
     -------
@@ -601,21 +581,17 @@ def load_data(
         An iterable over the given dataset for testing
     """
     adata = concat_data(data_list, batch_categories, join=join, batch_key=batch_key)
-    log.info(f"Raw dataset shape: {adata.shape}") if log else None
+    logger.info(f"Raw dataset shape: {adata.shape}")
     if batch_name != "batch":
         if "," in batch_name:
             names = batch_name.split(",")
-            adata.obs["batch"] = (
-                adata.obs[names[0]].astype(str) + "_" + adata.obs[names[1]].astype(str)
-            )
+            adata.obs["batch"] = adata.obs[names[0]].astype(str) + "_" + adata.obs[names[1]].astype(str)
         else:
             adata.obs["batch"] = adata.obs[batch_name]
     if "batch" not in adata.obs:
         adata.obs["batch"] = "batch"
     adata.obs["batch"] = adata.obs["batch"].astype("category")
-    log.info(
-        f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}'
-    ) if log else None
+    logger.info(f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}')
 
     if isinstance(n_top_features, str):
         if Path(n_top_features).is_file():
@@ -626,7 +602,7 @@ def load_data(
     if n_obs is not None or fraction is not None:
         sc.pp.subsample(adata, fraction=fraction, n_obs=n_obs)
 
-    if not processed:
+    if not processed and use_layer == "X":
         adata = preprocessing(
             adata,
             profile=profile,
@@ -635,14 +611,29 @@ def load_data(
             target_sum=target_sum,
             n_top_features=n_top_features,
             chunk_size=chunk_size,
-            log=log,
+            backed=backed,
         )
-    scdata = SingleCellDataset(adata)  # Wrap AnnData into Pytorch Dataset
+    elif use_layer in adata.layers:
+        adata.layers[use_layer] = MaxAbsScaler().fit_transform(adata.layers[use_layer])
+    elif use_layer in adata.obsm:
+        adata.obsm[use_layer] = MaxAbsScaler().fit_transform(adata.obsm[use_layer])
+    else:
+        msg = f"Using `{use_layer}` is not yet supported"
+        raise ValueError(msg)
+    scdata = SingleCellDataset(adata, use_layer=use_layer)  # Wrap AnnData into Pytorch Dataset
     trainloader = DataLoader(
-        scdata, batch_size=batch_size, drop_last=True, num_workers=4, #shuffle=True
+        scdata,
+        batch_size=batch_size,
+        drop_last=True,
+        num_workers=num_workers,  # shuffle=True
         generator=Generator(device=device),
     )
     batch_sampler = BatchSampler(batch_size, adata.obs["batch"], drop_last=False)
-    testloader = DataLoader(scdata, batch_sampler=batch_sampler,generator=Generator(device=device),)
+    testloader = DataLoader(
+        scdata,
+        batch_sampler=batch_sampler,
+        generator=Generator(device=device),
+        num_workers=num_workers,
+    )
 
     return adata, trainloader, testloader

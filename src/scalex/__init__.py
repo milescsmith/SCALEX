@@ -1,12 +1,19 @@
 # from pkg_resources import get_distribution
 
 # __version__ = get_distribution('scalex').version
-import importlib.metadata
+from importlib.metadata import PackageNotFoundError, metadata, version
+
+from loguru import logger
 
 from scalex.function import SCALEX
 
-__version__ = importlib.metadata.version(__name__)
-__author__ = importlib.metadata.metadata(__name__)["author"]
-__email__ = importlib.metadata.metadata(__name__)["email"]
+try:
+    __version__ = version(__name__)
+    __author__ = metadata(__name__)["author"]
+    __email__ = metadata(__name__)["email"]
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "unknown"
+
+logger.disable("scalex")
 
 __all__ = ["SCALEX"]

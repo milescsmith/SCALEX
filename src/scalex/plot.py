@@ -71,29 +71,20 @@ def embedding(
             )
             size = min(
                 size,
-                120000
-                / len(adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]),
+                120000 / len(adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]),
             )
         else:
-            groups = list(
-                adata[adata.obs[groupby] == b]
-                .obs[color]
-                .astype("category")
-                .cat.categories.values
-            )
+            groups = list(adata[adata.obs[groupby] == b].obs[color].astype("category").cat.categories.values)
             size = min(size, 120000 / len(adata[adata.obs[groupby] == b]))
         adata.obs["tmp"] = adata.obs["tmp"].astype("category")
         if color_map is not None:
-            palette = [
-                color_map[i] if i in color_map else "gray"
-                for i in adata.obs["tmp"].cat.categories
-            ]
+            palette = [color_map[i] if i in color_map else "gray" for i in adata.obs["tmp"].cat.categories]
         else:
             palette = None
 
         title = b if cond2 is None else v2 + sep + b
         if save is not None:
-            save_ = "_" + b + save
+            save_ = f"_{b}{save}"
             show = False
         else:
             save_ = None
@@ -307,7 +298,7 @@ def plot_meta2(
     if batches is None:
         batches = np.unique(adata.obs[batch])  # print(batches)
 
-    for _i, b in enumerate(batches):
+    for b in batches:
         for cat in adata.obs[color].cat.categories:
             index = np.where((adata.obs[color] == cat) & (adata.obs[batch] == b))[0]
             if len(index) > 0:

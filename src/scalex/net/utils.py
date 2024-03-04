@@ -84,6 +84,6 @@ class EarlyStopping:
         Saves model when loss decrease.
         """
         if self.checkpoint_file:
-            # logger.info(f"Loading saved model from {self.checkpoint_file}")
+            logger.info(f"Loading saved model from {self.checkpoint_file}")
             torch.save(model.state_dict(), self.checkpoint_file)
         self.loss_min = loss

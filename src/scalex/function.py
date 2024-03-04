@@ -14,10 +14,10 @@ import numpy as np
 import scanpy as sc
 import torch
 from anndata import AnnData
+from loguru import logger
 from sklearn.metrics import silhouette_score
 
 from scalex.data import load_data
-from scalex.logger import create_logger
 from scalex.metrics import batch_entropy_mixing_score
 from scalex.net.utils import EarlyStopping
 from scalex.net.vae import VAE
@@ -38,6 +38,8 @@ def SCALEX(
     processed: bool = False,
     fraction: float | None = None,
     n_obs: int | None = None,
+    use_layer: str = "X",
+    backed: bool = False,
     batch_size: int = 64,
     lr: float = 2e-4,
     max_iteration: int = 30000,
@@ -53,6 +55,7 @@ def SCALEX(
     assess: bool = False,
     show: bool = True,
     evaluate: bool = False,
+    num_workers: int = 4,
 ) -> AnnData:
     """
     Online single-cell data integration through projecting heterogeneous datasets into a common cell-embedding space
@@ -127,17 +130,13 @@ def SCALEX(
         device = "mps"
     else:
         device = "cpu"
+
     torch.set_default_device(device)
 
     if outdir:
         outdir = Path(outdir)
         # outdir = outdir+'/'
         outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
-        log = create_logger(
-            "SCALEX", fh=outdir.joinpath("log.txt"), overwrite=True
-        )
-    else:
-        log = create_logger("SCALEX")
     if projection:
         projection = Path(projection)
 
@@ -156,20 +155,21 @@ def SCALEX(
             fraction=fraction,
             n_obs=n_obs,
             processed=processed,
+            use_layer=use_layer,
+            backed=backed,
             batch_name=batch_name,
             batch_key=batch_key,
-            log=log,
-            device=device
+            device=device,
+            num_workers=num_workers,
         )
 
         # TODO: if the model exists, why not just reload it?
         early_stopping = EarlyStopping(
             patience=10,
-            checkpoint_file=outdir.joinpath("checkpoint", "model.pt")
-            if outdir
-            else None,
+            checkpoint_file=outdir.joinpath("checkpoint", "model.pt") if outdir else None,
         )
-        x_dim, n_domain = adata.shape[1], len(adata.obs["batch"].cat.categories)
+        x_dim = adata.shape[1] if (use_layer == "X" or use_layer in adata.layers) else adata.obsm[use_layer].shape[1]
+        n_domain = len(adata.obs["batch"].cat.categories)
 
         # model config
         enc = [["fc", 1024, 1, "relu"], ["fc", 10, "", ""]]  # TO DO
@@ -177,7 +177,6 @@ def SCALEX(
 
         model = VAE(enc, dec, n_domain=n_domain)
 
-        # log.info('model\n'+model.__repr__())
         model.fit(
             trainloader,
             lr=lr,
@@ -222,19 +221,14 @@ def SCALEX(
             processed=processed,
             batch_name=batch_name,
             batch_key=batch_key,
-            log=log,
-            device=device
+            device=device,
         )
-    #         log.info('Processed dataset shape: {}'.format(adata.shape))
 
-    adata.obsm["latent"] = model.encodeBatch(
-        testloader, device=device, evaluate=evaluate
-    )  # save latent rep
+    adata.obsm["latent"] = model.encodeBatch(testloader, device=device, evaluate=evaluate)  # save latent rep
     if impute:
         adata.layers["impute"] = model.encodeBatch(
             testloader, out="impute", batch_id=impute, device=device, evaluate=evaluate
         )
-    # log.info('Output dir: {}'.format(outdir))
 
     model.to(device)
     del model
@@ -252,7 +246,7 @@ def SCALEX(
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
 
     if not ignore_umap:  # and adata.shape[0]<1e6:
-        log.info("Plot umap")
+        logger.info("Plot umap")
         sc.pp.neighbors(adata, n_neighbors=30, use_rep="latent")
         sc.tl.umap(adata, min_dist=0.1)
         sc.tl.leiden(adata)
@@ -268,27 +262,19 @@ def SCALEX(
         else:
             save = None
 
-        if len(color) > 0:
+        if color:
             if projection and (not repeat):
-                embedding(
-                    adata, color="leiden", groupby="projection", save=save, show=show
-                )
+                embedding(adata, color="leiden", groupby="projection", save=save, show=show)
             else:
-                sc.pl.umap(
-                    adata, color=color, save=save, wspace=0.4, ncols=4, show=show
-                )
+                sc.pl.umap(adata, color=color, save=save, wspace=0.4, ncols=4, show=show)
         if assess:
             if len(adata.obs["batch"].cat.categories) > 1:
-                entropy_score = batch_entropy_mixing_score(
-                    adata.obsm["X_umap"], adata.obs["batch"]
-                )
-                log.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
+                entropy_score = batch_entropy_mixing_score(adata.obsm["X_umap"], adata.obs["batch"])
+                logger.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
 
             if "celltype" in adata.obs:
-                sil_score = silhouette_score(
-                    adata.obsm["X_umap"], adata.obs["celltype"].cat.codes
-                )
-                log.info(f"silhouette_score: {sil_score:.3f}")
+                sil_score = silhouette_score(adata.obsm["X_umap"], adata.obs["celltype"].cat.codes)
+                logger.info(f"silhouette_score: {sil_score:.3f}")
 
     if outdir is not None:
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")

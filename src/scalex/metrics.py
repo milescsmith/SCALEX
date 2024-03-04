@@ -13,9 +13,7 @@ import scipy
 from sklearn.neighbors import NearestNeighbors
 
 
-def batch_entropy_mixing_score(
-    data, batches, n_neighbors=100, n_pools=100, n_samples_per_pool=100
-):
+def batch_entropy_mixing_score(data, batches, n_neighbors=100, n_pools=100, n_samples_per_pool=100):
     """
     Calculate batch entropy mixing score
 
@@ -76,13 +74,7 @@ def batch_entropy_mixing_score(
         indices = np.random.choice(np.arange(data.shape[0]), size=n_samples_per_pool)
         score += np.mean(
             [
-                entropy(
-                    batches[
-                        kmatrix[indices].nonzero()[1][
-                            kmatrix[indices].nonzero()[0] == i
-                        ]
-                    ]
-                )
+                entropy(batches[kmatrix[indices].nonzero()[1][kmatrix[indices].nonzero()[0] == i]])
                 for i in range(n_samples_per_pool)
             ]
         )
