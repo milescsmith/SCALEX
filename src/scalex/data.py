@@ -188,7 +188,8 @@ def preprocessing_rna(
     min_features: int = 600,
     min_cells: int = 3,
     target_sum: int = 10000,
-    n_top_features=2000,  # or gene list
+    n_top_features: int = 2000,  # or gene list
+    backed: bool = False,
 ):
     """
     Preprocessing single-cell RNA-seq data
@@ -218,7 +219,7 @@ def preprocessing_rna(
 
     logger.info("Preprocessing")
     # if not issparse(adata.X):
-    if not isinstance(adata.X, csr.csr_matrix):
+    if not isinstance(adata.X, csr.csr_matrix) and (not backed) and (not adata.isbacked):
         adata.X = scipy.sparse.csr_matrix(adata.X)
 
     adata = adata[

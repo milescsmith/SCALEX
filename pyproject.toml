@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "scalex"
-version = "1.2.0"
+version = "1.2.1"
 description = "Online single-cell data integration through projecting heterogeneous datasets into a common cell-embedding space"
 authors = ["Lei Xiong <jsxlei@gmail.com>"]
 license = "MIT"
