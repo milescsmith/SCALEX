@@ -164,7 +164,8 @@ class VAE(nn.Module):
         optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=5e-4)
         num_epoch = int(np.ceil(max_iteration / len(dataloader)))
 
-        with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
+        # with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
+        with trange(num_epoch, total=num_epoch, desc="Epochs") as tq:
             for _epoch in tq:
                 epoch_loss = defaultdict(float)
                 i = 0

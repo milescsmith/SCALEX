@@ -14,10 +14,11 @@ from typing import Literal
 import anndata as ad
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
 import scanpy as sc
 import torch
-from anndata import AnnData
+from loguru import logger
 from sklearn.metrics import silhouette_score
 
 from scalex.data import load_data
@@ -29,8 +30,8 @@ from scalex.plot import embedding
 
 
 def SCALEX(
-    data_list: ad.AnnData | list[ad.AnnData],
-    raw_data_list: ad.AnnData | list[ad.AnnData] | None = None,
+    data_list: str | ad.AnnData | list[ad.AnnData],
+    raw_data_list: str | ad.AnnData | list[ad.AnnData] | None = None,
     batch_categories: list | None = None,
     profile: Literal["RNA", "ATAC", "PROT"] = "RNA",
     batch_name: str = "batch",
@@ -256,11 +257,11 @@ def SCALEX(
     del model
     if projection and (not repeat):
         ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
-        adata = AnnData.concatenate(
+        adata = ad.concat(
             ref,
             adata,
-            batch_categories=["reference", "query"],
-            batch_key="projection",
+            keys=["reference", "query"],
+            label="projection",
             index_unique=None,
         )
 

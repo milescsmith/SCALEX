@@ -165,7 +165,11 @@ def concat_data(data_list, batch_categories=None, join="inner", batch_key="batch
                 raise ValueError(msg)
             # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
             concat_adatas = ad.concat(
-                adata_list, join=join, label=batch_key, keys=batch_categories, index_unique=index_unique
+                adata_list,
+                join=join,
+                label=batch_key,
+                keys=batch_categories,
+                index_unique=index_unique,
             )
             if save:
                 concat_adatas.write(save, compression="gzip")
@@ -179,9 +183,10 @@ def preprocessing(
     min_features: int = 600,
     min_cells: int = 3,
     target_sum: int | None = None,
-    n_top_features: int = 2000,  # or gene list
+    n_top_features=None,  # or gene list
     backed: bool = False,
     # chunk_size: int = CHUNK_SIZE,
+    log=None,
 ) -> ad.AnnData:
     """
     Preprocessing single-cell data
@@ -197,20 +202,19 @@ def preprocessing(
     min_cells
         Filtered out genes that are detected in less than n cells. Default: 3.
     target_sum
-        After normalization, each cell has a total count equal to target_sum. Default 1e4.
+        After normalization, each cell has a total count equal to target_sum. If None, total count of each cell equal to the median of total counts for cells before normalization.
     n_top_features
         Number of highly-variable genes to keep. Default: 2000.
     chunk_size
         Number of samples from the same batch to transform. Default: 20000.
+    log
+        If log, record each operation in the log file. Default: None.
 
     Return
     -------
     The AnnData object after preprocessing.
 
     """
-    if target_sum is None:
-        target_sum = 10000
-
     match profile:
         case "RNA":
             return preprocessing_rna(
@@ -220,6 +224,8 @@ def preprocessing(
                 target_sum=target_sum,
                 n_top_features=n_top_features,
                 backed=backed,
+                # chunk_size=chunk_size,
+                log=log,
             )
         case "ATAC":
             return preprocessing_atac(
@@ -228,10 +234,18 @@ def preprocessing(
                 min_cells=min_cells,
                 target_sum=target_sum,
                 n_top_features=n_top_features,
+                # chunk_size=chunk_size,
                 backed=backed,
+                log=log,
             )
         case "PROT":
-            return preprocessing_prot(adata=adata, raw_adata=raw_adata)
+            return preprocessing_prot(
+                adata=adata,
+                raw_adata=raw_adata,
+            )
+        case _:
+            msg = f"That `{profile}` type data is not supported"
+            raise ValueError(msg)
 
 
 def preprocessing_rna(
@@ -241,6 +255,7 @@ def preprocessing_rna(
     target_sum: int = 10000,
     n_top_features: int = 2000,  # or gene list
     backed: bool = False,
+) -> ad.AnnData:
 ) -> ad.AnnData:
     """
     Preprocessing single-cell RNA-seq data
@@ -332,11 +347,7 @@ def preprocessing_atac(
     """
     # TODO replace this with snapatac or something from muon
     # episcanpy requires tbb, which fucks with MacOS
-    # import episcanpy as epi 
-
-    min_features = 100 if min_features is None else min_features
-    n_top_features = 100000 if n_top_features is None else n_top_features
-    target_sum = 10000 if target_sum is None else target_sum
+    # import episcanpy as epi
 
     log.info("Preprocessing") if log else None
     # if not issparse(adata.X):
@@ -373,6 +384,7 @@ def preprocessing_atac(
 
 
 def preprocessing_prot(adata: ad.AnnData, raw_adata: ad.AnnData, **kwargs) -> ad.AnnData:
+
     pt.pp.dsb(data=adata, data_raw=raw_adata, **kwargs)
 
     return adata
@@ -517,6 +529,8 @@ class SingleCellDataset(Dataset):
 def load_data(
     data_list: list[ad.AnnData],
     raw_data_list: list[ad.AnnData] | None = None,
+    data_list: list[ad.AnnData],
+    raw_data_list: list[ad.AnnData] | None = None,
     batch_categories=None,
     profile: Literal["RNA", "PROT", "ATAC"] = "RNA",
     join: str = "inner",
@@ -528,8 +542,10 @@ def load_data(
     n_top_features: int | None = None,
     backed: bool = False,
     batch_size: int = 64,
+    chunk_size: int = CHUNK_SIZE,
     fraction: float | None = None,
     n_obs: int | None = None,
+    processed: bool = False,
     processed: bool = False,
     device: str = "cpu",
     num_workers: int = 4,
@@ -571,7 +587,7 @@ def load_data(
         An iterable over the given dataset for testing
     """
 
-    if profile.upper() == "PROT" and not processed and raw_data_list:
+    if profile.upper() == "PROT" and not processed:
         try:
             adata_list = [
                 preprocessing(
@@ -582,6 +598,7 @@ def load_data(
                     min_cells=min_cells,
                     target_sum=target_sum,
                     n_top_features=n_top_features,
+                    chunk_size=chunk_size,
                     backed=backed,
                 )
                 for x, y in zip(data_list, raw_data_list, strict=True)
@@ -626,16 +643,11 @@ def load_data(
 
     scdata = SingleCellDataset(adata, use_layer=use_layer)  # Wrap AnnData into Pytorch Dataset
     trainloader = DataLoader(
-        scdata,
-        batch_size=batch_size,
-        drop_last=True,
-        num_workers=num_workers,  # shuffle=True
+        scdata, batch_size=batch_size, drop_last=True, num_workers=4, #shuffle=True
         generator=Generator(device=device),
     )
     batch_sampler = BatchSampler(batch_size, adata.obs["batch"], drop_last=False)
-    testloader = DataLoader(
-        scdata, batch_sampler=batch_sampler, generator=Generator(device=device), num_workers=num_workers
-    )
+    testloader = DataLoader(scdata, batch_sampler=batch_sampler,generator=Generator(device=device),)
 
     return adata, trainloader, testloader
 
@@ -650,36 +662,4 @@ def process_batch_ident(batch_name: str, adata: ad.AnnData) -> None:
     if "batch" not in adata.obs:
         adata.obs["batch"] = "batch"
     adata.obs["batch"] = adata.obs["batch"].astype("category")
-    log.info(
-        f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}'
-    ) if log else None
-
-    if isinstance(n_top_features, str):
-        if Path(n_top_features).is_file():
-            n_top_features = np.loadtxt(n_top_features, dtype=str)
-        else:
-            n_top_features = int(n_top_features)
-
-    if n_obs is not None or fraction is not None:
-        sc.pp.subsample(adata, fraction=fraction, n_obs=n_obs)
-
-    if not processed:
-        adata = preprocessing(
-            adata,
-            profile=profile,
-            min_features=min_features,
-            min_cells=min_cells,
-            target_sum=target_sum,
-            n_top_features=n_top_features,
-            chunk_size=chunk_size,
-            log=log,
-        )
-    scdata = SingleCellDataset(adata)  # Wrap AnnData into Pytorch Dataset
-    trainloader = DataLoader(
-        scdata, batch_size=batch_size, drop_last=True, num_workers=4, #shuffle=True
-        generator=Generator(device=device),
-    )
-    batch_sampler = BatchSampler(batch_size, adata.obs["batch"], drop_last=False)
-    testloader = DataLoader(scdata, batch_sampler=batch_sampler,generator=Generator(device=device),)
-
-    return adata, trainloader, testloader
+    logger.info(f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}')
