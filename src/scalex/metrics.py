@@ -64,7 +64,8 @@ def batch_entropy_mixing_score(data, batches, n_neighbors=100, n_pools=100, n_sa
     score = 0
     batches_ = np.unique(batches)
     N_batches = len(batches_)
-    if N_batches < 2:
+    MIN_NUMBER_OF_BATCHES = 2
+    if N_batches < MIN_NUMBER_OF_BATCHES:
         msg = "Should be more than one cluster for batch mixing"
         raise ValueError(msg)
     P = np.zeros(N_batches)

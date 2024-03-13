@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated, Optional
 
+import anndata as ad
 import typer
 from rich import print as rprint
 
@@ -32,7 +33,7 @@ verbosity_level = 0
 
 class Profile(str, Enum):
     RNA = "RNA"
-    Prot = "Prot"
+    Prot = "PROT"
     ATAC = "ATAC"
 
 
@@ -73,9 +74,15 @@ def verbosity(
 )
 def main(
     data_list: Annotated[
-        list[Path],
+        list[ad.AnnData],
         typer.Argument(
-            help="A path list of AnnData matrices to concatenate with. Each matrix is referred to as a 'batch'.",
+            help="A list of AnnData objects to concatenate. Each matrix is referred to as a 'batch'.",
+        ),
+    ],
+    raw_data_list: Annotated[
+        list[ad.AnnData],
+        typer.Argument(
+            help="A list of AnnData objects corresponding the raw, unfilterd results. For use only when processing antibody-based tag data. [bold]NOTE[/bold]: there must be one raw file for each filtered file in data_list.",
         ),
     ],
     batch_categories: Annotated[
@@ -307,9 +314,11 @@ def main(
     ] = False,  # FBT002
 ):
     init_logger(verbosity, save_log)
+    profile = profile.upper()
 
     return SCALEX(
         data_list,
+        raw_data_list,
         batch_categories=batch_categories,
         profile=profile,
         join=join,

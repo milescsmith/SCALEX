@@ -149,9 +149,10 @@ class VAE(nn.Module):
         """
         self.to(device)
         optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=5e-4)
-        n_epoch = int(np.ceil(max_iteration / len(dataloader)))
+        num_epoch = int(np.ceil(max_iteration / len(dataloader)))
 
-        with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
+        # with trange(n_epoch, total=n_epoch, desc="Epochs") as tq:
+        with trange(num_epoch, total=num_epoch, desc="Epochs") as tq:
             for _epoch in tq:
                 epoch_loss = defaultdict(float)
                 i = 0
@@ -175,6 +176,7 @@ class VAE(nn.Module):
 
                     loss = {"recon_loss": recon_loss, "kl_loss": 0.5 * kl_loss}
 
+                    logger.debug(f"Resetting gradients for iteration {i} of epoch {num_epoch}")
                     optim.zero_grad()
                     sum(loss.values()).backward()
                     optim.step()

@@ -10,10 +10,10 @@
 
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
 import scanpy as sc
 import torch
-from anndata import AnnData
 from loguru import logger
 from sklearn.metrics import silhouette_score
 
@@ -25,7 +25,8 @@ from scalex.plot import embedding
 
 
 def SCALEX(
-    data_list: str | AnnData | list = None,
+    data_list: str | ad.AnnData | list[ad.AnnData],
+    raw_data_list: str | ad.AnnData | list[ad.AnnData] | None = None,
     batch_categories: list | None = None,
     profile: str = "RNA",
     batch_name: str = "batch",
@@ -56,7 +57,7 @@ def SCALEX(
     show: bool = True,
     evaluate: bool = False,
     num_workers: int = 4,
-) -> AnnData:
+) -> ad.AnnData:
     """
     Online single-cell data integration through projecting heterogeneous datasets into a common cell-embedding space
 
@@ -134,8 +135,7 @@ def SCALEX(
     torch.set_default_device(device)
 
     if outdir:
-        outdir = Path(outdir)
-        # outdir = outdir+'/'
+        outdir = outdir if isinstance(outdir, Path) else Path(outdir)
         outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
     if projection:
         projection = Path(projection)
@@ -143,6 +143,7 @@ def SCALEX(
     if not projection:
         adata, trainloader, testloader = load_data(
             data_list,
+            raw_data_list,
             batch_categories,
             join=join,
             profile=profile,
@@ -234,11 +235,11 @@ def SCALEX(
     del model
     if projection and (not repeat):
         ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
-        adata = AnnData.concatenate(
+        adata = ad.concat(
             ref,
             adata,
-            batch_categories=["reference", "query"],
-            batch_key="projection",
+            keys=["reference", "query"],
+            label="projection",
             index_unique=None,
         )
 

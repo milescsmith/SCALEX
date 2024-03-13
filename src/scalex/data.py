@@ -8,6 +8,7 @@
 
 from glob import glob
 from pathlib import Path
+from typing import Literal
 
 import anndata as ad
 import numpy as np
@@ -15,8 +16,9 @@ import pandas as pd
 import scanpy as sc
 import scipy
 from loguru import logger
+from muon import prot as pt
 from scipy.sparse import csr, issparse
-from sklearn.preprocessing import MaxAbsScaler
+from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler
 from torch import Generator
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import Sampler
@@ -153,34 +155,104 @@ def concat_data(
     -------
     New merged AnnData.
     """
-    if len(data_list) == 1:
-        return load_files(data_list[0])
-    elif isinstance(data_list, str):
-        return load_files(data_list)
-    elif isinstance(data_list, ad.AnnData):
-        return data_list
+    match data_list:
+        case x if len(x) == 1:
+            return load_files(data_list[0])
+        case x if isinstance(x, str):
+            return load_files(data_list)
+        case x if isinstance(x, ad.AnnData):
+            return data_list
+        case _:
+            adata_list = [root if isinstance(root, ad.AnnData) else load_files(root) for root in data_list]
 
-    adata_list = []
-    for root in data_list:
-        adata = root if isinstance(root, ad.AnnData) else load_files(root)
-        adata_list.append(adata)
+            if batch_categories is None:
+                batch_categories = list(map(str, range(len(adata_list))))
+            elif len(adata_list) != len(batch_categories):
+                msg = "The number of adatas to use does not match the number of batches"
+                raise ValueError(msg)
+            # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
+            concat_adatas = ad.concat(
+                adata_list,
+                join=join,
+                label=batch_key,
+                keys=batch_categories,
+                index_unique=index_unique,
+            )
+            if save:
+                concat_adatas.write(save, compression="gzip")
+            return concat_adatas
 
-    if batch_categories is None:
-        batch_categories = list(map(str, range(len(adata_list))))
-    elif len(adata_list) != len(batch_categories):
-        msg = "The number of adatas to use does not match the number of batches"
-        raise ValueError(msg)
-    # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
-    concat = ad.concatenate(
-        *adata_list,
-        join=join,
-        batch_key=batch_key,
-        batch_categories=batch_categories,
-        index_unique=index_unique,
-    )
-    if save:
-        concat.write(save, compression="gzip")
-    return concat
+
+def preprocessing(
+    adata: ad.AnnData,
+    raw_adata: ad.AnnData | None = None,
+    profile: Literal["RNA", "ATAC", "PROT"] = "RNA",
+    min_features: int = 600,
+    min_cells: int = 3,
+    target_sum: int | None = None,
+    n_top_features=None,  # or gene list
+    backed: bool = False,
+    # chunk_size: int = CHUNK_SIZE,
+    log=None,
+) -> ad.AnnData:
+    """
+    Preprocessing single-cell data
+
+    Parameters
+    ----------
+    adata
+        An AnnData matrice of shape n_obs x n_vars. Rows correspond to cells and columns to genes.
+    profile
+        Specify the single-cell profile type, RNA or ATAC, Default: RNA.
+    min_features
+        Filtered out cells that are detected in less than n genes. Default: 100.
+    min_cells
+        Filtered out genes that are detected in less than n cells. Default: 3.
+    target_sum
+        After normalization, each cell has a total count equal to target_sum. If None, total count of each cell equal to the median of total counts for cells before normalization.
+    n_top_features
+        Number of highly-variable genes to keep. Default: 2000.
+    chunk_size
+        Number of samples from the same batch to transform. Default: 20000.
+    log
+        If log, record each operation in the log file. Default: None.
+
+    Return
+    -------
+    The AnnData object after preprocessing.
+
+    """
+    match profile:
+        case "RNA":
+            return preprocessing_rna(
+                adata=adata,
+                min_features=min_features,
+                min_cells=min_cells,
+                target_sum=target_sum,
+                n_top_features=n_top_features,
+                backed=backed,
+                # chunk_size=chunk_size,
+                log=log,
+            )
+        case "ATAC":
+            return preprocessing_atac(
+                adata=adata,
+                min_features=min_features,
+                min_cells=min_cells,
+                target_sum=target_sum,
+                n_top_features=n_top_features,
+                # chunk_size=chunk_size,
+                backed=backed,
+                log=log,
+            )
+        case "PROT":
+            return preprocessing_prot(
+                adata=adata,
+                raw_adata=raw_adata,
+            )
+        case _:
+            msg = f"That `{profile}` type data is not supported"
+            raise ValueError(msg)
 
 
 def preprocessing_rna(
@@ -190,7 +262,7 @@ def preprocessing_rna(
     target_sum: int = 10000,
     n_top_features: int = 2000,  # or gene list
     backed: bool = False,
-):
+) -> ad.AnnData:
     """
     Preprocessing single-cell RNA-seq data
 
@@ -213,9 +285,6 @@ def preprocessing_rna(
     -------
     The AnnData object after preprocessing.
     """
-    min_features = 600 if min_features is None else min_features
-    n_top_features = 2000 if n_top_features is None else n_top_features
-    target_sum = 10000 if target_sum is None else target_sum
 
     logger.info("Preprocessing")
     # if not issparse(adata.X):
@@ -264,9 +333,9 @@ def preprocessing_atac(
     adata: ad.AnnData,
     min_features: int = 100,
     min_cells: int = 3,
-    target_sum=None,
-    n_top_features=100000,  # or gene list
-):
+    target_sum: int = 10000,
+    n_top_features: int = 100000,  # or gene list
+) -> ad.AnnData:
     """
     Preprocessing single-cell ATAC-seq
 
@@ -292,10 +361,6 @@ def preprocessing_atac(
     # TODO replace this with snapatac or something from muon
     # episcanpy requires tbb, which fucks with MacOS
     # import episcanpy as epi
-
-    min_features = 100 if min_features is None else min_features
-    n_top_features = 100000 if n_top_features is None else n_top_features
-    target_sum = 10000 if target_sum is None else target_sum
 
     logger.info("Preprocessing")
     # if not issparse(adata.X):
@@ -326,69 +391,11 @@ def preprocessing_atac(
     return adata
 
 
-def preprocessing(
-    adata: ad.AnnData,
-    profile: str = "RNA",
-    min_features: int = 600,
-    min_cells: int = 3,
-    target_sum: int | None = None,
-    n_top_features=None,  # or gene list
-    backed: bool = False,
-    chunk_size: int = CHUNK_SIZE,
-    log=None,
-):
-    """
-    Preprocessing single-cell data
+def preprocessing_prot(adata: ad.AnnData, raw_adata: ad.AnnData, **kwargs) -> ad.AnnData:
 
-    Parameters
-    ----------
-    adata
-        An AnnData matrice of shape n_obs x n_vars. Rows correspond to cells and columns to genes.
-    profile
-        Specify the single-cell profile type, RNA or ATAC, Default: RNA.
-    min_features
-        Filtered out cells that are detected in less than n genes. Default: 100.
-    min_cells
-        Filtered out genes that are detected in less than n cells. Default: 3.
-    target_sum
-        After normalization, each cell has a total count equal to target_sum. If None, total count of each cell equal to the median of total counts for cells before normalization.
-    n_top_features
-        Number of highly-variable genes to keep. Default: 2000.
-    chunk_size
-        Number of samples from the same batch to transform. Default: 20000.
-    log
-        If log, record each operation in the log file. Default: None.
+    pt.pp.dsb(data=adata, data_raw=raw_adata, **kwargs)
 
-    Return
-    -------
-    The AnnData object after preprocessing.
-
-    """
-    if profile == "RNA":
-        return preprocessing_rna(
-            adata,
-            min_features=min_features,
-            min_cells=min_cells,
-            target_sum=target_sum,
-            n_top_features=n_top_features,
-            backed=backed,
-            chunk_size=chunk_size,
-            log=log,
-        )
-    elif profile == "ATAC":
-        return preprocessing_atac(
-            adata,
-            min_features=min_features,
-            min_cells=min_cells,
-            target_sum=target_sum,
-            n_top_features=n_top_features,
-            chunk_size=chunk_size,
-            backed=backed,
-            log=log,
-        )
-    else:
-        msg = f"Not support profile: `{profile}` yet"
-        raise ValueError(msg)
+    return adata
 
 
 def batch_scale(adata: ad.AnnData) -> ad.AnnData:
@@ -526,22 +533,23 @@ class SingleCellDataset(Dataset):
 
 
 def load_data(
-    data_list,
+    data_list: list[ad.AnnData],
+    raw_data_list: list[ad.AnnData] | None = None,
     batch_categories=None,
-    profile="RNA",
-    join="inner",
-    batch_key="batch",
-    batch_name="batch",
-    min_features=600,
-    min_cells=3,
-    target_sum=None,
-    n_top_features=None,
+    profile: str = "RNA",
+    join: str = "inner",
+    batch_key: str = "batch",
+    batch_name: str = "batch",
+    min_features: int = 600,
+    min_cells: int = 3,
+    target_sum: int | None = None,
+    n_top_features: int | None = None,
     backed: bool = False,
     batch_size: int = 64,
-    chunk_size=CHUNK_SIZE,
-    fraction=None,
+    chunk_size: int = CHUNK_SIZE,
+    fraction: float | None = None,
     n_obs: int | None = None,
-    processed=False,
+    processed: bool = False,
     device: str = "cpu",
     num_workers: int = 4,
     use_layer: str = "X",
@@ -552,7 +560,7 @@ def load_data(
     Parameters
     ----------
     data_list
-        A path list of AnnData matrices to concatenate with. Each matrix is referred to as a 'batch'.
+        A list of AnnData matrices to concatenate. Each matrix is referred to as a 'batch'.
     batch_categories
         Categories for the batch annotation. By default, use increasing numbers.
     join
@@ -581,46 +589,61 @@ def load_data(
     testloader
         An iterable over the given dataset for testing
     """
-    adata = concat_data(data_list, batch_categories, join=join, batch_key=batch_key)
-    logger.info(f"Raw dataset shape: {adata.shape}")
-    if batch_name != "batch":
-        if "," in batch_name:
-            names = batch_name.split(",")
-            adata.obs["batch"] = adata.obs[names[0]].astype(str) + "_" + adata.obs[names[1]].astype(str)
-        else:
-            adata.obs["batch"] = adata.obs[batch_name]
-    if "batch" not in adata.obs:
-        adata.obs["batch"] = "batch"
-    adata.obs["batch"] = adata.obs["batch"].astype("category")
-    logger.info(f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}')
 
-    if isinstance(n_top_features, str):
-        if Path(n_top_features).is_file():
-            n_top_features = np.loadtxt(n_top_features, dtype=str)
-        else:
-            n_top_features = int(n_top_features)
-
-    if n_obs is not None or fraction is not None:
-        sc.pp.subsample(adata, fraction=fraction, n_obs=n_obs)
-
-    if not processed and use_layer == "X":
-        adata = preprocessing(
-            adata,
-            profile=profile,
-            min_features=min_features,
-            min_cells=min_cells,
-            target_sum=target_sum,
-            n_top_features=n_top_features,
-            chunk_size=chunk_size,
-            backed=backed,
-        )
-    elif use_layer in adata.layers:
-        adata.layers[use_layer] = MaxAbsScaler().fit_transform(adata.layers[use_layer])
-    elif use_layer in adata.obsm:
-        adata.obsm[use_layer] = MaxAbsScaler().fit_transform(adata.obsm[use_layer])
+    if profile.upper() == "PROT" and not processed:
+        try:
+            adata_list = [
+                preprocessing(
+                    adata=x,
+                    raw_adata=y,
+                    profile=profile,
+                    min_features=min_features,
+                    min_cells=min_cells,
+                    target_sum=target_sum,
+                    n_top_features=n_top_features,
+                    chunk_size=chunk_size,
+                    backed=backed,
+                )
+                for x, y in zip(data_list, raw_data_list, strict=True)
+            ]
+        except ValueError as e:
+            msg = "There is a mismatch between the filtered and raw adata lists. They should be equal in size."
+            raise ValueError(msg) from e
+        adata = concat_data(adata_list, batch_categories, join=join, batch_key=batch_key)
+        process_batch_ident(batch_name, adata)
+        adata.X = MinMaxScaler().fit_transform(adata.X)
     else:
-        msg = f"Using `{use_layer}` is not yet supported"
-        raise ValueError(msg)
+        adata = concat_data(data_list, batch_categories, join=join, batch_key=batch_key)
+        if n_obs is not None or fraction is not None:
+            sc.pp.subsample(adata, fraction=fraction, n_obs=n_obs)
+        process_batch_ident(batch_name, adata)
+
+        match use_layer:
+            case "X" if not processed:
+                adata = preprocessing(
+                    adata=adata,
+                    raw_adata=None,
+                    profile=profile,
+                    min_features=min_features,
+                    min_cells=min_cells,
+                    target_sum=target_sum,
+                    n_top_features=n_top_features,
+                    # chunk_size=chunk_size,
+                    backed=backed,
+                )
+                adata.X = MinMaxScaler().fit_transform(
+                    adata.X
+                )  # Not sure why we are scaling to [-1,1] when the later VAE can only handle fitting data in range of [0,1]
+            case "X" if processed:
+                adata.X = MinMaxScaler().fit_transform(adata.X)
+            case layer if layer in adata.layers:
+                adata.layers[use_layer] = MinMaxScaler().fit_transform(adata.layers[use_layer])
+            case layer if layer in adata.obsm:
+                adata.obsm[use_layer] = MinMaxScaler().fit_transform(adata.obsm[use_layer])
+            case _:
+                msg = f"Using `{use_layer}` is not yet supported"
+                raise ValueError(msg)
+
     scdata = SingleCellDataset(adata, use_layer=use_layer)  # Wrap AnnData into Pytorch Dataset
     trainloader = DataLoader(
         scdata,
@@ -638,3 +661,16 @@ def load_data(
     )
 
     return adata, trainloader, testloader
+
+
+def process_batch_ident(batch_name: str, adata: ad.AnnData) -> None:
+    if batch_name != "batch":
+        if "," in batch_name:
+            names = batch_name.split(",")
+            adata.obs["batch"] = adata.obs[names[0]].astype(str) + "_" + adata.obs[names[1]].astype(str)
+        else:
+            adata.obs["batch"] = adata.obs[batch_name]
+    if "batch" not in adata.obs:
+        adata.obs["batch"] = "batch"
+    adata.obs["batch"] = adata.obs["batch"].astype("category")
+    logger.info(f'There are {len(adata.obs["batch"].cat.categories)} batches under batch_name: {batch_name}')
