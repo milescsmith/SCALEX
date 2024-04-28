@@ -14,3 +14,4 @@ docs/_build/
 **/*.txt
 **/*.json
 debug.py
+.pdm-python
