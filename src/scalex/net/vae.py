@@ -7,6 +7,7 @@
 # Description:
 
 """
+
 from collections import defaultdict
 
 import numpy as np
@@ -59,15 +60,7 @@ class VAE(nn.Module):
         model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
 
-    def encodeBatch(
-        self,
-        dataloader,
-        device="cuda",
-        out="latent",
-        batch_id=None,
-        return_idx=False,
-        evaluate=False,
-    ):
+    def encodeBatch(self, dataloader, device="cuda", out="latent", batch_id=None, return_idx=False, evaluate=False):
         """
         Inference
 
@@ -120,15 +113,7 @@ class VAE(nn.Module):
 
         return (output, indices) if return_idx else output
 
-    def fit(
-        self,
-        dataloader,
-        lr=2e-4,
-        max_iteration=30000,
-        early_stopping=None,
-        device="cuda",
-        verbose=False,
-    ):
+    def fit(self, dataloader, lr=2e-4, max_iteration=30000, early_stopping=None, device="cuda", verbose=False):
         """
         Fit model
 
@@ -158,14 +143,9 @@ class VAE(nn.Module):
                 i = 0
                 for x, y, _idx in (
                     tk0 := tqdm(
-                        dataloader,
-                        total=len(dataloader),
-                        leave=False,
-                        desc="Iterations",
-                        disable=(not verbose),
+                        dataloader, total=len(dataloader), leave=False, desc="Iterations", disable=(not verbose)
                     )
                 ):
-
                     _x, _y = x.float().to(device), y.long().to(device)
 
                     # loss
@@ -192,7 +172,7 @@ class VAE(nn.Module):
 
                 early_stopping(sum(epoch_loss.values()), self)
                 if early_stopping.early_stop:
-                    logger.info(f"EarlyStopping: run {_epoch+1} epoch")
+                    logger.info(f"EarlyStopping: run {_epoch + 1} epoch")
                     break
 
 

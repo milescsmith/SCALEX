@@ -7,6 +7,7 @@
 # Description:
 
 """
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
@@ -69,10 +70,7 @@ def embedding(
                 .astype("category")
                 .cat.categories.values
             )
-            size = min(
-                size,
-                120000 / len(adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]),
-            )
+            size = min(size, 120000 / len(adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]))
         else:
             groups = list(adata[adata.obs[groupby] == b].obs[color].astype("category").cat.categories.values)
             size = min(size, 120000 / len(adata[adata.obs[groupby] == b]))
@@ -423,16 +421,7 @@ def plot_confusion(y, y_pred, save=None, cmap="Blues"):
     cm = cm.astype("float") / cm.sum(axis=0)[np.newaxis, :]
 
     plt.figure(figsize=(14, 14))
-    sns.heatmap(
-        cm,
-        xticklabels=y_class,
-        yticklabels=pred_class,
-        cmap=cmap,
-        square=True,
-        cbar=False,
-        vmin=0,
-        vmax=1,
-    )
+    sns.heatmap(cm, xticklabels=y_class, yticklabels=pred_class, cmap=cmap, square=True, cbar=False, vmin=0, vmax=1)
 
     plt.xticks(rotation=45, horizontalalignment="right")  # , fontsize=14)
     plt.yticks(fontsize=14, rotation=0)

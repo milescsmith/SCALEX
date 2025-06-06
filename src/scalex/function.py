@@ -9,6 +9,7 @@
 """
 
 from pathlib import Path
+from typing import Literal
 
 import anndata as ad
 import numpy as np
@@ -25,10 +26,10 @@ from scalex.plot import embedding
 
 
 def SCALEX(
-    data_list: str | ad.AnnData | list[ad.AnnData],
-    raw_data_list: str | ad.AnnData | list[ad.AnnData] | None = None,
+    data_list: ad.AnnData | list[ad.AnnData],
+    raw_data_list: ad.AnnData | list[ad.AnnData] | None = None,
     batch_categories: list | None = None,
-    profile: str = "RNA",
+    profile: Literal["RNA", "ATAC", "PROT"] = "RNA",
     batch_name: str = "batch",
     min_features: int = 600,
     min_cells: int = 3,
@@ -46,8 +47,8 @@ def SCALEX(
     max_iteration: int = 30000,
     seed: int = 124,
     gpu: int = 0,
-    outdir: str | None = None,
-    projection: str | None = None,
+    outdir: Path | str | None = None,
+    projection: Path | str | None = None,
     repeat: bool = False,
     impute: str | None = None,
     chunk_size: int = 20000,
@@ -138,7 +139,10 @@ def SCALEX(
         outdir = outdir if isinstance(outdir, Path) else Path(outdir)
         outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
     if projection:
-        projection = Path(projection)
+        projection = projection if isinstance(projection, Path) else Path(projection)
+    data_list = data_list if isinstance(data_list, list) else [data_list]
+    if raw_data_list:
+        raw_data_list = raw_data_list if isinstance(raw_data_list, list) else [raw_data_list]
 
     if not projection:
         adata, trainloader, testloader = load_data(
@@ -150,7 +154,6 @@ def SCALEX(
             target_sum=target_sum,
             n_top_features=n_top_features,
             batch_size=batch_size,
-            chunk_size=chunk_size,
             min_features=min_features,
             min_cells=min_cells,
             fraction=fraction,
@@ -166,10 +169,9 @@ def SCALEX(
 
         # TODO: if the model exists, why not just reload it?
         early_stopping = EarlyStopping(
-            patience=10,
-            checkpoint_file=outdir.joinpath("checkpoint", "model.pt") if outdir else None,
+            patience=10, checkpoint_file=str(outdir.joinpath("checkpoint", "model.pt")) if outdir else "tmp_model.pt"
         )
-        x_dim = adata.shape[1] if (use_layer == "X" or use_layer in adata.layers) else adata.obsm[use_layer].shape[1]
+        x_dim = adata.shape[1] if use_layer is None else adata.obsm[use_layer].shape[1]
         n_domain = len(adata.obs["batch"].cat.categories)
 
         # model config
@@ -188,25 +190,12 @@ def SCALEX(
         )
         if outdir:
             config_file = outdir.joinpath("checkpoint/config.pt")
-            torch.save(
-                {
-                    "n_top_features": adata.var.index,
-                    "enc": enc,
-                    "dec": dec,
-                    "n_domain": n_domain,
-                },
-                config_file,
-            )
+            torch.save({"n_top_features": adata.var.index, "enc": enc, "dec": dec, "n_domain": n_domain}, config_file)
     else:
-        state = torch.load(projection.joinpath("checkpoint/config.pt"))
-        n_top_features, enc, dec, n_domain = (
-            state["n_top_features"],
-            state["enc"],
-            state["dec"],
-            state["n_domain"],
-        )
+        state = torch.load(projection.joinpath("checkpoint", "config.pt"))
+        n_top_features, enc, dec, n_domain = (state["n_top_features"], state["enc"], state["dec"], state["n_domain"])
         model = VAE(enc, dec, n_domain=n_domain)
-        model.load_model(projection.joinpath("checkpoint/model.pt"))
+        model.load_model(projection.joinpath("checkpoint", "model.pt"))
         model.to(device)
 
         adata, trainloader, testloader = load_data(
@@ -215,7 +204,6 @@ def SCALEX(
             join="outer",
             profile=profile,
             target_sum=target_sum,
-            chunk_size=chunk_size,
             n_top_features=n_top_features,
             min_cells=0,
             min_features=min_features,
@@ -234,14 +222,8 @@ def SCALEX(
     model.to(device)
     del model
     if projection and (not repeat):
-        ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
-        adata = ad.concat(
-            ref,
-            adata,
-            keys=["reference", "query"],
-            label="projection",
-            index_unique=None,
-        )
+        ref = sc.read(projection.joinpath("adata.h5ad"))
+        adata = ad.concat(adatas=[ref, adata], keys=["reference", "query"], label="projection", index_unique=None)
 
     if outdir is not None:
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
@@ -305,9 +287,9 @@ def label_transfer(ref, query, rep="latent", label="celltype"):
 
     from sklearn.neighbors import KNeighborsClassifier
 
-    X_train = ref.obsm[rep]
+    x_train = ref.obsm[rep]
     y_train = ref.obs[label]
-    X_test = query.obsm[rep]
+    x_test = query.obsm[rep]
 
-    knn = KNeighborsClassifier().fit(X_train, y_train)
-    return knn.predict(X_test)
+    knn = KNeighborsClassifier().fit(x_train, y_train)
+    return knn.predict(x_test)

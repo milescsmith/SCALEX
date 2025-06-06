@@ -47,7 +47,7 @@ class Joins(str, Enum):
 def version_callback(value: bool) -> None:  # FBT001
     """Prints the version of the package."""
     if value:
-        rprint(f"[yellow]scalex[/] version: [bold blue]{__version__}[/]")
+        rprint(f"[yellow]{__package__}[/] version: [bold blue]{__version__}[/]")
         raise typer.Exit()
 
 
@@ -61,86 +61,52 @@ def verbosity(
             help="Control output verbosity. Pass this argument multiple times to increase the amount of output.",
             count=True,
         ),
-    ] = 0
+    ] = 0,
 ) -> None:
     verbosity_level = verbose  # noqa: F841
 
 
 @app.callback(invoke_without_command=True)
 @app.command(
-    name="SCALEX",
-    no_args_is_help=True,
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    name="SCALEX", no_args_is_help=True, context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 def main(
     data_list: Annotated[
         list[ad.AnnData],
-        typer.Argument(
-            help="A list of AnnData objects to concatenate. Each matrix is referred to as a 'batch'.",
-        ),
+        typer.Argument(help="A list of AnnData objects to concatenate. Each matrix is referred to as a 'batch'."),
     ],
     raw_data_list: Annotated[
         list[ad.AnnData],
         typer.Argument(
-            help="A list of AnnData objects corresponding the raw, unfilterd results. For use only when processing antibody-based tag data. [bold]NOTE[/bold]: there must be one raw file for each filtered file in data_list.",
+            help="A list of AnnData objects corresponding the raw, unfilterd results. For use only when processing antibody-based tag data. [bold]NOTE[/bold]: there must be one raw file for each filtered file in data_list."
         ),
     ],
     batch_categories: Annotated[
         Optional[list[str]],
         typer.Option(
-            "--batch_categories",
-            "-b",
-            help="Categories for the batch annotation. By default, use increasing numbers.",
+            "--batch_categories", "-b", help="Categories for the batch annotation. By default, use increasing numbers."
         ),
     ] = None,
-    profile: Annotated[
-        Profile,
-        typer.Option(
-            "--profile",
-            help="Specify the type single-cell data.",
-        ),
-    ] = Profile.RNA,
+    profile: Annotated[Profile, typer.Option("--profile", help="Specify the type single-cell data.")] = Profile.RNA,
     batch_name: Annotated[
-        str,
-        typer.Option(
-            "--batch_name",
-            help="Use this annotation in obs as batches for training model",
-        ),
+        str, typer.Option("--batch_name", help="Use this annotation in obs as batches for training model")
     ] = "batch",
     min_features: Annotated[
         Optional[int],
-        typer.Option(
-            "--min_features",
-            help="Filtered out cells that are detected in less than min_features.",
-        ),
+        typer.Option("--min_features", help="Filtered out cells that are detected in less than min_features."),
     ] = None,
     min_cells: Annotated[
-        Optional[int],
-        typer.Option(
-            "--min_cells",
-            help="Filtered out genes that are detected in less than min_cells.",
-        ),
+        Optional[int], typer.Option("--min_cells", help="Filtered out genes that are detected in less than min_cells.")
     ] = 3,
     join: Annotated[
         Joins,
-        typer.Option(
-            "--join",
-            help="Use intersection ('inner') or union ('outer') of variables of different batches",
-        ),
+        typer.Option("--join", help="Use intersection ('inner') or union ('outer') of variables of different batches"),
     ] = Joins.inner,
     batch_key: Annotated[
-        str,
-        typer.Option(
-            "--batch_key",
-            help="Add the batch annotation to obs using this key.",
-        ),
+        str, typer.Option("--batch_key", help="Add the batch annotation to obs using this key.")
     ] = "batch",
     n_top_features: Annotated[
-        Optional[int],
-        typer.Option(
-            "--n_top_features",
-            help="Number of highly-variable genes to keep.",
-        ),
+        Optional[int], typer.Option("--n_top_features", help="Number of highly-variable genes to keep.")
     ] = None,
     target_sum: Annotated[
         Optional[int],
@@ -149,100 +115,24 @@ def main(
             help="After normalization, each cell has a total count equal to target_sum. If None, total count of each cell equal to the median of total counts for cells before normalization.",
         ),
     ] = None,
-    processed: Annotated[
-        bool,
-        typer.Option(
-            "--processed",
-            help="",
-        ),
-    ] = False,
-    fraction: Annotated[
-        Optional[float],
-        typer.Option(
-            "--fraction",
-            help="",
-        ),
-    ] = None,
-    n_obs: Annotated[
-        Optional[int],
-        typer.Option(
-            "--n_obs",
-            help="",
-        ),
-    ] = None,
-    use_layer: Annotated[
-        str,
-        typer.Option(
-            "--use_layer",
-            help="",
-        ),
-    ] = "X",
-    backed: Annotated[
-        bool,
-        typer.Option(
-            "--backed",
-            help="",
-        ),
-    ] = False,
-    projection: Annotated[
-        Optional[str],
-        typer.Option(
-            "--projection",
-            "-p",
-            help="",
-        ),
-    ] = None,
-    impute: Annotated[
-        bool,
-        typer.Option(
-            "--impute",
-            help="",
-        ),
-    ] = False,
-    outdir: Annotated[
-        Path,
-        typer.Option(
-            "--outdir",
-            "-o",
-            help="",
-        ),
-    ] = "output",
-    learn_rate: Annotated[
-        float,
-        typer.Option(
-            "--lr",
-            help="",
-        ),
-    ] = 2e-4,
-    batch_size: Annotated[
-        int,
-        typer.Option(
-            "--batch_size",
-            help="Number of samples per batch to load.",
-        ),
-    ] = 64,
-    gpu: Annotated[
-        int,
-        typer.Option(
-            "-g",
-            "--gpu",
-            help="Index of GPU to use if GPU is available.",
-        ),
-    ] = 0,
+    processed: Annotated[bool, typer.Option("--processed", help="")] = False,
+    fraction: Annotated[Optional[float], typer.Option("--fraction", help="")] = None,
+    n_obs: Annotated[Optional[int], typer.Option("--n_obs", help="")] = None,
+    use_layer: Annotated[str, typer.Option("--use_layer", help="")] = "X",
+    backed: Annotated[bool, typer.Option("--backed", help="")] = False,
+    projection: Annotated[Optional[str], typer.Option("--projection", "-p", help="")] = None,
+    impute: Annotated[bool, typer.Option("--impute", help="")] = False,
+    outdir: Annotated[Path, typer.Option("--outdir", "-o", help="")] = "output",
+    learn_rate: Annotated[float, typer.Option("--lr", help="")] = 2e-4,
+    batch_size: Annotated[int, typer.Option("--batch_size", help="Number of samples per batch to load.")] = 64,
+    gpu: Annotated[int, typer.Option("-g", "--gpu", help="Index of GPU to use if GPU is available.")] = 0,
     max_iteration: Annotated[
         int,
         typer.Option(
-            "--max_iteration",
-            help="Max iterations for training. Training one batch_size samples is one iteration.",
+            "--max_iteration", help="Max iterations for training. Training one batch_size samples is one iteration."
         ),
     ] = 30000,
-    seed: Annotated[
-        int,
-        typer.Option(
-            "--seed",
-            help=" Random seed for torch and numpy.",
-        ),
-    ] = 124,
+    seed: Annotated[int, typer.Option("--seed", help=" Random seed for torch and numpy.")] = 124,
     chunk_size: Annotated[
         int,
         typer.Option(
@@ -253,8 +143,7 @@ def main(
     ignore_umap: Annotated[
         bool,
         typer.Option(
-            "--ignore_umap",
-            help=" If True, do not perform UMAP for visualization and leiden for clustering.",
+            "--ignore_umap", help=" If True, do not perform UMAP for visualization and leiden for clustering."
         ),
     ] = False,
     repeat: Annotated[
@@ -271,27 +160,9 @@ def main(
             help="If True, calculate the entropy_batch_mixing score and silhouette score to evaluate integration results.",
         ),
     ] = False,
-    evaluate_model: Annotated[
-        bool,
-        typer.Option(
-            "--eval",
-            help="",
-        ),
-    ] = False,
-    num_workers: Annotated[
-        int,
-        typer.Option(
-            "--num_workers",
-            help="Number of CPU cores to use.",
-        ),
-    ] = 4,
-    show: Annotated[
-        bool,
-        typer.Option(
-            "--show",
-            help="",
-        ),
-    ] = False,
+    evaluate_model: Annotated[bool, typer.Option("--eval", help="")] = False,
+    num_workers: Annotated[int, typer.Option("--num_workers", help="Number of CPU cores to use.")] = 4,
+    show: Annotated[bool, typer.Option("--show", help="")] = False,
     verbose: Annotated[
         int,
         typer.Option(

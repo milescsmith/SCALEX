@@ -26,7 +26,7 @@ if __name__ == '__main__':
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
     
-    adata = sc.read_h5ad(args.h5ad)
+    adata = sc.read(args.h5ad)
     time1 = time.time()
     sc.pp.filter_cells(adata, min_genes=args.min_genes)
     sc.pp.filter_genes(adata, min_cells=args.min_cells)

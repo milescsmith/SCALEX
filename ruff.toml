@@ -1,24 +1,5 @@
 line-length = 120
-target-version = "py310"
-
-exclude = [
-    ".git",
-    ".hg",
-    "__pycache__",
-    "_bin/*",
-    "_build/*",
-    "_ig_fbcode_wheel/*",
-    "buck-out/*",
-    "third-party-buck/*",
-    "third-party2/*",
-    "dist",
-    ".venv",
-    ".nox",
-    ".mypy_cache",
-    ".pytype",
-    ".svn",
-    "__pypackages__",
-]
+target-version = "py312"
 
 [lint]
 select = [
@@ -78,13 +59,30 @@ unfixable = [
     "F401",
     "UP007",
 ]
+exclude = [
+    ".git",
+    ".hg",
+    "__pycache__",
+    "_bin/*",
+    "_build/*",
+    "_ig_fbcode_wheel/*",
+    "buck-out/*",
+    "third-party-buck/*",
+    "third-party2/*",
+    "dist",
+    ".venv",
+    ".nox",
+    ".mypy_cache",
+    ".pytype",
+    ".svn",
+    "__pypackages__",
+]
 
-[lint.per-file-ignores]
+[lint.extend-per-file-ignores]
 "./tests/*" = ["S101", "PLR2004", "F811", "F401", "S301"]
-"**/__main__.py" = ["UP007", "FBT002"]
+"**/main.py" = ["UP007", "FBT002"]
 
 [lint.flake8-tidy-imports]
-# Disallow all relative imports.
 ban-relative-imports = "all"
 
 [format]
@@ -95,7 +93,10 @@ quote-style = "double"
 indent-style = "space"
 
 # Like Black, respect magic trailing commas.
-skip-magic-trailing-comma = false
+skip-magic-trailing-comma = true
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+[lint.isort]
+split-on-trailing-comma = false

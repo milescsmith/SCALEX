@@ -5,7 +5,7 @@ from loguru import logger
 
 
 def init_logger(verbose: int, save_log: bool = True, msg_format: str | None = None) -> None:
-    logger.enable("scalex")
+    logger.enable(__package__)
     timezone = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
 
     try:
@@ -17,9 +17,11 @@ def init_logger(verbose: int, save_log: bool = True, msg_format: str | None = No
 
     if msg_format is None:
         if in_notebook:
-            msg_format = "<green>{name}</green>:<red>{function}</red>:<blue>{line}</blue>·-·<level>{message}</level>"
+            msg_format = (
+                "{level}|<green>{name}</green>:<red>{function}</red>:<blue>{line}</blue> - <level>{message}</level>"
+            )
         else:
-            msg_format = "{time:YYYY-MM-DD at HH:mm:ss} | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>·-·<level>{message}</level>"
+            msg_format = "{time:YYYY-MM-DD HH:mm:ss}|{level}|<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 
     match verbose:
         case 3:
@@ -31,22 +33,16 @@ def init_logger(verbose: int, save_log: bool = True, msg_format: str | None = No
         case _:
             log_level = "ERROR"  # Catches ERROR, CRITICAL, and EXCEPTION
 
-    config = {
-        "handlers": [
-            {"sink": stderr, "format": msg_format, "level": log_level},
-        ]
-    }
+    config = {"handlers": [{"sink": stderr, "format": msg_format, "level": log_level}]}
+    logger.configure(**config)
 
     if save_log:
-        config["handlers"].append(
-            {
-                "sink": f"scalex_{datetime.datetime.now(tz=timezone).strftime('%Y-%d-%m--%H-%M-%S')}.log",
-                "level": "DEBUG",
-                "format": "{time:YYYY-MM-DD at HH:mm:ss} | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan>·-·<level>{message}</level>",
-                "filter": "scalex",
-                "backtrace": True,
-                "diagnose": True,
-            }
+        logger.add(
+            sink=f"{__package__}_{datetime.datetime.now(tz=timezone).strftime('%Y-%d-%m--%H-%M-%S')}.log",
+            level=log_level,
+            format="{time:YYYY-MM-DD at HH:mm:ss}|{level}|{name}:{function}:{line} - {message}",
+            filter=__package__,
+            backtrace=True,
+            diagnose=True,
+            colorize=False,
         )
-
-    logger.configure(**config)
