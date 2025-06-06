@@ -13,6 +13,7 @@ from typing import Literal
 
 import anndata as ad
 from pathlib import Path
+from typing import Literal
 
 import anndata as ad
 import numpy as np
@@ -30,8 +31,8 @@ from scalex.plot import embedding
 
 
 def SCALEX(
-    data_list: str | ad.AnnData | list[ad.AnnData],
-    raw_data_list: str | ad.AnnData | list[ad.AnnData] | None = None,
+    data_list: ad.AnnData | list[ad.AnnData],
+    raw_data_list: ad.AnnData | list[ad.AnnData] | None = None,
     batch_categories: list | None = None,
     profile: Literal["RNA", "ATAC", "PROT"] = "RNA",
     batch_name: str = "batch",
@@ -156,7 +157,10 @@ def SCALEX(
     else:
         log = create_logger("SCALEX")
     if projection:
-        projection = Path(projection)
+        projection = projection if isinstance(projection, Path) else Path(projection)
+    data_list = data_list if isinstance(data_list, list) else [data_list]
+    if raw_data_list:
+        raw_data_list = raw_data_list if isinstance(raw_data_list, list) else [raw_data_list]
 
     if not projection:
         adata, trainloader, testloader = load_data(
@@ -184,12 +188,8 @@ def SCALEX(
         # TODO: if the model exists, why not just reload it?
         early_stopping = EarlyStopping(
             patience=10, checkpoint_file=str(outdir.joinpath("checkpoint", "model.pt")) if outdir else "tmp_model.pt"
-            patience=10,
-            checkpoint_file=outdir.joinpath("checkpoint", "model.pt")
-            if outdir
-            else None,
         )
-        x_dim = adata.shape[1] if use_layer is None else adata.X.shape[1]
+        x_dim = adata.shape[1] if use_layer is None else adata.obsm[use_layer].shape[1]
         n_domain = len(adata.obs["batch"].cat.categories)
 
         # model config
@@ -208,25 +208,12 @@ def SCALEX(
         )
         if outdir:
             config_file = outdir.joinpath("checkpoint/config.pt")
-            torch.save(
-                {
-                    "n_top_features": adata.var.index,
-                    "enc": enc,
-                    "dec": dec,
-                    "n_domain": n_domain,
-                },
-                config_file,
-            )
+            torch.save({"n_top_features": adata.var.index, "enc": enc, "dec": dec, "n_domain": n_domain}, config_file)
     else:
-        state = torch.load(projection.joinpath("checkpoint/config.pt"))
-        n_top_features, enc, dec, n_domain = (
-            state["n_top_features"],
-            state["enc"],
-            state["dec"],
-            state["n_domain"],
-        )
+        state = torch.load(projection.joinpath("checkpoint", "config.pt"))
+        n_top_features, enc, dec, n_domain = (state["n_top_features"], state["enc"], state["dec"], state["n_domain"])
         model = VAE(enc, dec, n_domain=n_domain)
-        model.load_model(projection.joinpath("checkpoint/model.pt"))
+        model.load_model(projection.joinpath("checkpoint", "model.pt"))
         model.to(device)
 
         adata, trainloader, testloader = load_data(
@@ -256,14 +243,8 @@ def SCALEX(
     model.to(device)
     del model
     if projection and (not repeat):
-        ref = sc.read_h5ad(projection.joinpath("adata.h5ad"))
-        adata = ad.concat(
-            ref,
-            adata,
-            keys=["reference", "query"],
-            label="projection",
-            index_unique=None,
-        )
+        ref = sc.read(projection.joinpath("adata.h5ad"))
+        adata = ad.concat(adatas=[ref, adata], keys=["reference", "query"], label="projection", index_unique=None)
 
     if outdir is not None:
         adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
@@ -337,5 +318,5 @@ def label_transfer(ref, query, rep="latent", label="celltype"):
     y_train = ref.obs[label]
     x_test = query.obsm[rep]
 
-    knn = KNeighborsClassifier().fit(X_train, y_train)
-    return knn.predict(X_test)
+    knn = KNeighborsClassifier().fit(x_train, y_train)
+    return knn.predict(x_test)

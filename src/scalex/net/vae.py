@@ -70,15 +70,7 @@ class VAE(nn.Module):
         model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
 
-    def encodeBatch(
-        self,
-        dataloader,
-        device="cuda",
-        out="latent",
-        batch_id=None,
-        return_idx=False,
-        evaluate=False,
-    ):
+    def encodeBatch(self, dataloader, device="cuda", out="latent", batch_id=None, return_idx=False, evaluate=False):
         """
         Inference
 
@@ -133,15 +125,7 @@ class VAE(nn.Module):
         return (output, indices) if return_idx else output
         return (output, indices) if return_idx else output
 
-    def fit(
-        self,
-        dataloader,
-        lr=2e-4,
-        max_iteration=30000,
-        early_stopping=None,
-        device="cuda",
-        verbose=False,
-    ):
+    def fit(self, dataloader, lr=2e-4, max_iteration=30000, early_stopping=None, device="cuda", verbose=False):
         """
         Fit model
 

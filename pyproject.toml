@@ -53,14 +53,6 @@ documentation = "https://scalex.readthedocs.io/en/latest/index.html"
 scalex = "scalex.__main__:app"
 
 [tool.pdm]
-[tool.pdm.dev-dependencies]
-dev = [
-    "ruff<1.0.0,>=0.1.14",
-    "mypy<2.0.0,>=1.8.0",
-    "sourcery<2.0.0,>=1.15.0",
-    "pandas-stubs<3.0.0.0,>=2.2.0.240218",
-]
-
 [tool.pdm.build]
 includes = []
 
