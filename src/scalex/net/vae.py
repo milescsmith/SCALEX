@@ -69,8 +69,30 @@ class VAE(nn.Module):
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
+        
 
-    def encodeBatch(self, dataloader, device="cuda", out="latent", batch_id=None, return_idx=False, evaluate=False):
+    def forward(self, x, y):
+        x, y = x.float(), y.long()
+
+        # loss
+        z, mu, var = self.encoder(x)
+        recon_x = self.decoder(z, y)
+        recon_loss = F.binary_cross_entropy(recon_x, x) * x.size(-1)  ## TO DO
+        kl_loss = kl_div(mu, var) 
+
+        # acc.append(pearson_corr_coef(recon_x, x))
+        loss = {'recon_loss':recon_loss, 'kl_loss':0.5*kl_loss} 
+        return z, recon_x, loss
+
+    def encodeBatch(
+            self, 
+            dataloader, 
+            device='cuda', 
+            out='latent', 
+            batch_id=None,
+            return_idx=False, 
+            eval=False
+        ):
         """
         Inference
 

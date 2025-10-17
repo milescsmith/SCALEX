@@ -8,62 +8,49 @@
 
 """
 
-from pathlib import Path
-from typing import Literal
-
-import anndata as ad
-from pathlib import Path
-from typing import Literal
-
-import anndata as ad
-import numpy as np
-import scanpy as sc
-import torch
-from loguru import logger
-from sklearn.metrics import silhouette_score
-
-from scalex.data import load_data
-from scalex.logger import create_logger
-from scalex.metrics import batch_entropy_mixing_score
-from scalex.net.utils import EarlyStopping
-from scalex.net.vae import VAE
-from scalex.plot import embedding
+from anndata import AnnData, concat
+# from typing import Union, List
 
 
 def SCALEX(
-    data_list: ad.AnnData | list[ad.AnnData],
-    raw_data_list: ad.AnnData | list[ad.AnnData] | None = None,
-    batch_categories: list | None = None,
-    profile: Literal["RNA", "ATAC", "PROT"] = "RNA",
-    batch_name: str = "batch",
-    min_features: int = 600,
-    min_cells: int = 3,
-    target_sum: int | None = None,
-    n_top_features: int | None = None,
-    join: str = "inner",
-    batch_key: str = "batch",
-    processed: bool = False,
-    fraction: float | None = None,
-    n_obs: int | None = None,
-    use_layer: str = "X",
-    backed: bool = False,
-    batch_size: int = 64,
-    lr: float = 2e-4,
-    max_iteration: int = 30000,
-    seed: int = 124,
-    gpu: int = 0,
-    outdir: Path | str | None = None,
-    projection: Path | str | None = None,
-    repeat: bool = False,
-    impute: str | None = None,
-    chunk_size: int = 20000,
-    ignore_umap: bool = False,
-    verbose: bool = False,
-    assess: bool = False,
-    show: bool = True,
-    evaluate: bool = False,
-    num_workers: int = 4,
-) -> ad.AnnData:
+        data_list, #Union[str, AnnData, List]=None, 
+        batch_categories:list=None,
+        profile:str='RNA',
+        batch_name:str='batch',
+        min_features:int=600, 
+        min_cells:int=3, 
+        target_sum:int=None,
+        n_top_features:int=None,
+        min_cell_per_batch:int=200,
+        join:str='inner', 
+        batch_key:str='batch',  
+        processed:bool=False,
+        fraction:float=None,
+        n_obs:int=None,
+        use_layer:str='X',
+        keep_mt:bool=False,
+        backed:bool=False,
+        batch_size:int=64, 
+        groupby:str=None,
+        subsets:list=None,
+        lr:float=2e-4, 
+        max_iteration:int=30000,
+        seed:int=124, 
+        gpu:int=0, 
+        outdir:str=None, 
+        projection:str=None,
+        repeat:bool=False,
+        name:str=None,
+        impute:str=None, 
+        chunk_size:int=20000,
+        ignore_umap:bool=False,
+        verbose:bool=False,
+        assess:bool=False,
+        show:bool=True,
+        eval:bool=False,
+        num_workers:int=4,
+        cell_type:str='cell_type',
+    ): # -> AnnData:
     """
     Online single-cell data integration through projecting heterogeneous datasets into a common cell-embedding space
 
@@ -126,8 +113,21 @@ def SCALEX(
     umap.pdf
         UMAP plot for visualization.
     """
+    import torch
+    import numpy as np
+    import pandas as pd
+    import os
+    import scanpy as sc
 
-    np.random.seed(seed)  # seed
+
+    from .data import load_data
+    from .net.vae import VAE
+    from .net.utils import EarlyStopping
+    from .metrics import batch_entropy_mixing_score, silhouette_score
+    from .logger import create_logger
+    from .plot import embedding
+
+    np.random.seed(seed) # seed
     torch.manual_seed(seed)
 
     if torch.cuda.is_available():  # cuda device
@@ -141,14 +141,9 @@ def SCALEX(
     torch.set_default_device(device)
 
     if outdir:
-        outdir = outdir if isinstance(outdir, Path) else Path(outdir)
-        outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
-    if projection:
-        projection = projection if isinstance(projection, Path) else Path(projection)
-    data_list = data_list if isinstance(data_list, list) else [data_list]
-    if raw_data_list:
-        raw_data_list = raw_data_list if isinstance(raw_data_list, list) else [raw_data_list]
-        outdir = Path(outdir)
+        if name is not None and projection is not None:
+            outdir = os.path.join(projection, 'projection', name)
+            os.makedirs(outdir, exist_ok=True)
         # outdir = outdir+'/'
         outdir.joinpath("checkpoint").mkdir(exist_ok=True, parents=True)
         log = create_logger(
@@ -171,8 +166,12 @@ def SCALEX(
             profile=profile,
             target_sum=target_sum,
             n_top_features=n_top_features,
-            batch_size=batch_size,
-            min_features=min_features,
+            min_cell_per_batch=min_cell_per_batch,
+            batch_size=batch_size, 
+            groupby=groupby,
+            subsets=subsets,
+            chunk_size=chunk_size,
+            min_features=min_features, 
             min_cells=min_cells,
             fraction=fraction,
             n_obs=n_obs,
@@ -181,7 +180,8 @@ def SCALEX(
             backed=backed,
             batch_name=batch_name,
             batch_key=batch_key,
-            device=device,
+            keep_mt=keep_mt,
+            log=log,
             num_workers=num_workers,
         )
 
@@ -210,8 +210,8 @@ def SCALEX(
             config_file = outdir.joinpath("checkpoint/config.pt")
             torch.save({"n_top_features": adata.var.index, "enc": enc, "dec": dec, "n_domain": n_domain}, config_file)
     else:
-        state = torch.load(projection.joinpath("checkpoint", "config.pt"))
-        n_top_features, enc, dec, n_domain = (state["n_top_features"], state["enc"], state["dec"], state["n_domain"])
+        state = torch.load(os.path.join(projection, 'checkpoint/config.pt'), weights_only=False)
+        n_top_features, enc, dec, n_domain = state['n_top_features'], state['enc'], state['dec'], state['n_domain']
         model = VAE(enc, dec, n_domain=n_domain)
         model.load_model(projection.joinpath("checkpoint", "model.pt"))
         model.to(device)
@@ -225,10 +225,13 @@ def SCALEX(
             n_top_features=n_top_features,
             min_cells=0,
             min_features=min_features,
+            min_cell_per_batch=min_cell_per_batch,
             processed=processed,
             batch_name=batch_name,
             batch_key=batch_key,
-            device=device,
+            # keep_mt=keep_mt,
+            log = log,
+            num_workers=num_workers,
         )
 
     adata.obsm["latent"] = model.encodeBatch(
@@ -243,12 +246,23 @@ def SCALEX(
     model.to(device)
     del model
     if projection and (not repeat):
-        ref = sc.read(projection.joinpath("adata.h5ad"))
-        adata = ad.concat(adatas=[ref, adata], keys=["reference", "query"], label="projection", index_unique=None)
+        ref = sc.read_h5ad(os.path.join(projection, 'adata.h5ad'))
+        adata = concat(
+            [ref, adata],
+            # join='outer',
+            label='projection',
+            keys=['reference', 'query'],
+            index_unique=None,
+        )
+        # adata.raw = concat([ref.raw.to_adata(), adata.raw.to_adata()], join='outer', label='projection', keys=['reference', 'query'])
+        if 'leiden' in adata.obs:
+            del adata.obs['leiden']
+        for col in adata.obs.columns:
+            if not pd.api.types.is_string_dtype(adata.obs[col]):
+                adata.obs[col] = adata.obs[col].astype(str)
 
-    if outdir is not None:
-        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
-        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
+    # if outdir is not None:
+    #     adata.write(os.path.join(outdir, 'adata.h5ad'), compression='gzip')  
 
     if not ignore_umap:  # and adata.shape[0]<1e6:
         logger.info("Plot umap")
@@ -258,8 +272,9 @@ def SCALEX(
         adata.obsm["X_scalex_umap"] = adata.obsm["X_umap"]
 
         # UMAP visualization
-        sc.set_figure_params(dpi=80, figsize=(3, 3))
-        cols = ["batch", "celltype", "cell_type", "leiden"]
+        sc.set_figure_params(dpi=80, figsize=(3,3))
+        cols = [cell_type, 'leiden'] 
+        cols += ['batch'] if n_domain > 1 else []
         color = [c for c in cols if c in adata.obs]
         if outdir:
             sc.settings.figdir = outdir
@@ -269,26 +284,29 @@ def SCALEX(
 
         if color:
             if projection and (not repeat):
-                embedding(adata, color="leiden", groupby="projection", save=save, show=show)
+                cell_type = cell_type if cell_type in adata.obs else 'leiden'
+                save = os.path.join(outdir, 'umap.png')
+                embedding(adata, color=cell_type, groupby='projection', save=save, show=show)
             else:
-                sc.pl.umap(adata, color=color, save=save, wspace=0.4, ncols=4, show=show)
-        if assess:
-            if len(adata.obs["batch"].cat.categories) > 1:
-                entropy_score = batch_entropy_mixing_score(
-                    adata.obsm["X_umap"], adata.obs["batch"]
-                )
-                log.info(f"batch_entropy_mixing_score: {entropy_score:.3f}")
-
-            if "celltype" in adata.obs:
-                sil_score = silhouette_score(
-                    adata.obsm["X_umap"], adata.obs["celltype"].cat.codes
-                )
-                log.info(f"silhouette_score: {sil_score:.3f}")
+                sc.pl.umap(adata, color=color, save=save, wspace=0.4, ncols=4, show=show)  
 
     if outdir is not None:
-        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
-        adata.write(outdir.joinpath("adata.h5ad"), compression="gzip")
+        adata.write(os.path.join(outdir, 'adata.h5ad'), compression='gzip')
 
+    if assess:
+        if adata.shape[0] > 5e4:
+            log.info('Subsample cell numbers to 50,000 for entropy_batch_mixing_score calculation.')
+            sc.pp.subsample(adata, n_obs=int(5e4))
+        if len(adata.obs['batch'].cat.categories) > 1:
+            entropy_score = batch_entropy_mixing_score(adata.obsm['X_umap'], adata.obs['batch'])
+            log.info('batch_entropy_mixing_score: {:.3f}'.format(entropy_score))
+            adata.uns['batch_entropy_mixing_score'] = entropy_score
+
+        if cell_type in adata.obs:
+            sil_score = silhouette_score(adata.obsm['X_umap'], adata.obs[cell_type].cat.codes)
+            log.info("silhouette_score: {:.3f}".format(sil_score))
+            adata.uns['silhouette_score'] = sil_score
+    
     return adata
 
 
