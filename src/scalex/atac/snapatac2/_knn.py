@@ -10,6 +10,7 @@ from anndata import AnnData
 # from snapatac2._utils import is_anndata
 # import snapatac2._snapatac2 as internal
 
+
 def is_anndata(adata):
     """
     Check if the input is an AnnData object.
@@ -17,9 +18,9 @@ def is_anndata(adata):
     return isinstance(adata, AnnData)
 
 
-import numpy as np
 from scipy.spatial import cKDTree
 from sklearn.neighbors import NearestNeighbors
+
 
 def nearest_neighbour_graph(data: np.ndarray, k: int) -> np.ndarray:
     """
@@ -36,6 +37,7 @@ def nearest_neighbour_graph(data: np.ndarray, k: int) -> np.ndarray:
     distances, indices = tree.query(data, k=k + 1)  # +1 to include self
     indices = indices[:, 1:]  # Remove self-neighbors
     return indices
+
 
 def approximate_nearest_neighbour_graph(data: np.ndarray, k: int) -> np.ndarray:
     """
@@ -58,8 +60,8 @@ def knn(
     adata: AnnData | np.ndarray,
     n_neighbors: int = 50,
     use_dims: int | list[int] | None = None,
-    use_rep: str = 'X_spectral',
-    method: Literal['kdtree', 'hora', 'pynndescent'] = "kdtree",
+    use_rep: str = "X_spectral",
+    method: Literal["kdtree", "hora", "pynndescent"] = "kdtree",
     inplace: bool = True,
     random_state: int = 0,
 ) -> csr_matrix | None:
@@ -112,24 +114,24 @@ def knn(
             data = data[:, use_dims]
 
     n = data.shape[0]
-    if method == 'hora':
-        adj = approximate_nearest_neighbour_graph(
-            data.astype(np.float32), n_neighbors)
-    elif method == 'pynndescent':
+    if method == "hora":
+        adj = approximate_nearest_neighbour_graph(data.astype(np.float32), n_neighbors)
+    elif method == "pynndescent":
         import pynndescent
+
         index = pynndescent.NNDescent(data, n_neighbors=max(50, n_neighbors), random_state=random_state)
         adj, distances = index.neighbor_graph
         indices = np.ravel(adj[:, :n_neighbors])
-        distances = np.ravel(distances[:, :n_neighbors]) 
+        distances = np.ravel(distances[:, :n_neighbors])
         indptr = np.arange(0, distances.size + 1, n_neighbors)
         adj = csr_matrix((distances, indices, indptr), shape=(n, n))
         adj.sort_indices()
-    elif method == 'kdtree':
+    elif method == "kdtree":
         adj = nearest_neighbour_graph(data, n_neighbors)
     else:
         raise ValueError("method must be one of 'hora', 'pynndescent', 'kdtree'")
-    
+
     if inplace:
-        adata.obsp['distances'] = adj
+        adata.obsp["distances"] = adj
     else:
         return adj

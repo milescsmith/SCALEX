@@ -5,7 +5,8 @@ import pandas as pd
 
 np.random.seed(42)
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope="session")
 def adata_test(n_obs=16, n_vars=32, n_categories=3):
     """
     Creates a virtual AnnData object with random binary data for testing.
@@ -26,18 +27,19 @@ def adata_test(n_obs=16, n_vars=32, n_categories=3):
     var_names = [f"Gene_{j}" for j in range(n_vars)]
 
     # Create observation (cell) metadata
-    obs = pd.DataFrame({
-        'condition': np.random.choice([f"Condition_{i}" for i in range(1, n_categories + 1)], n_obs),
-        'batch': np.random.choice([i for i in range(1, n_categories + 1)], n_obs)
-    }, index=obs_names)
+    obs = pd.DataFrame(
+        {
+            "condition": np.random.choice([f"Condition_{i}" for i in range(1, n_categories + 1)], n_obs),
+            "batch": np.random.choice([i for i in range(1, n_categories + 1)], n_obs),
+        },
+        index=obs_names,
+    )
 
     # Create variable (gene) metadata
-    var = pd.DataFrame({
-        'Gene_ID': var_names
-    }, index=var_names)
+    var = pd.DataFrame({"Gene_ID": var_names}, index=var_names)
 
     # Create AnnData object
     adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.obs['batch'] = adata.obs['batch'].astype('category')
+    adata.obs["batch"] = adata.obs["batch"].astype("category")
 
     return adata

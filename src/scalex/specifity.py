@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 
+
 def jsd(p, q, base=np.e):
     """
     Compute Jensen-Shannon divergence.
@@ -18,11 +19,13 @@ def jsd(p, q, base=np.e):
     m = 0.5 * (p + q)
     return 0.5 * (stats.entropy(p, m, base=base) + stats.entropy(q, m, base=base))
 
+
 def jsd_sp(p, q, base=np.e):
     """
     Specificity score: 1 - sqrt(jsd)
     """
     return 1 - np.sqrt(jsd(p, q, base))
+
 
 def log2norm(e):
     """
@@ -31,17 +34,20 @@ def log2norm(e):
     loge = np.log2(e + 1)
     return loge / loge.sum()
 
+
 def predefined_pattern(t, labels):
     """
     Generate predefined binary pattern for cluster t.
     """
     return (labels == t).astype(int)
 
+
 def vec_specificity_score(e, t, labels):
     """
     Compute specificity score for a given cluster.
     """
     return jsd_sp(log2norm(e), log2norm(predefined_pattern(t, labels)))
+
 
 def mat_specificity_score(mat, labels):
     """
@@ -50,9 +56,9 @@ def mat_specificity_score(mat, labels):
     """
     unique_labels = np.unique(labels)
     return pd.DataFrame(
-        {t: mat.apply(lambda x: vec_specificity_score(x, t, labels), axis=1) for t in unique_labels},
-        index=mat.index
+        {t: mat.apply(lambda x: vec_specificity_score(x, t, labels), axis=1) for t in unique_labels}, index=mat.index
     )
+
 
 def compute_pvalues(score_mat, labels, num_permutations=1000):
     """
@@ -67,12 +73,14 @@ def compute_pvalues(score_mat, labels, num_permutations=1000):
     p_values = (np.sum(shuffled_scores >= score_mat.values[:, :, None], axis=2) + 1) / (num_permutations + 1)
     return pd.DataFrame(p_values, index=score_mat.index, columns=score_mat.columns)
 
+
 def filter_significant_clusters(score_mat, p_values, alpha=0.05):
     """
     Filter cluster-specific genes/peaks based on significance threshold (p-value < alpha).
     """
     significant_mask = p_values < alpha
     return score_mat.where(significant_mask)
+
 
 def cluster_specific(score_mat, classes=None, top=0):
     """
@@ -84,8 +92,6 @@ def cluster_specific(score_mat, classes=None, top=0):
     if classes is None:
         classes = peak_labels.unique()
 
-    top_indices = {
-        cls: max_scores[peak_labels == cls].nlargest(top).index for cls in classes
-    }
-    
+    top_indices = {cls: max_scores[peak_labels == cls].nlargest(top).index for cls in classes}
+
     return top_indices

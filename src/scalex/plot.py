@@ -10,31 +10,33 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import anndata as ad
 import scanpy as sc
+from scanpy.plotting._utils import _LegendLoc, _FontWeight, _FontSize
 import seaborn as sns
 from sklearn.metrics import adjusted_rand_score, confusion_matrix, f1_score, normalized_mutual_info_score
 
 
 def embedding(
-        adata, 
-        color='cell_type', 
-        color_map=None, 
-        groupby='batch', 
-        groups=None, 
-        cond2=None, 
-        v2=None, 
-        save=None, 
-        legend_loc='right margin', 
-        legend_fontsize=None, 
-        legend_fontweight='bold', 
-        sep='_', 
-        basis='X_umap',
-        size=30,
-        wspace=0.5,
-        n_cols=4,
-        show=True,
-        **kwargs
-    ):
+    adata: ad.AnnData,
+    color: str = "cell_type",
+    color_map: str | None = None,
+    groupby: str = "batch",
+    groups=None,
+    cond2=None,
+    v2: str | None = None,
+    save=None,
+    legend_loc: _LegendLoc = "right margin",
+    legend_fontsize: _FontSize = "medium",
+    legend_fontweight: _FontWeight = "bold",
+    sep="_",
+    basis="X_umap",
+    size=30,
+    wspace=0.5,
+    n_cols=4,
+    show=True,
+    **kwargs,
+):
     """
     plot separated embeddings with others as background
 
@@ -61,7 +63,7 @@ def embedding(
     """
 
     if groups is None:
-        _groups = adata.obs[groupby].astype('category').cat.categories
+        _groups = adata.obs[groupby].astype("category").cat.categories
     else:
         _groups = groups
 
@@ -70,66 +72,96 @@ def embedding(
     n_rows = (n_plots + n_cols - 1) // n_cols  # Calculate number of rows
     figsize = 4
     # wspace = 0.5
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * figsize + figsize * wspace * (n_cols - 1), n_rows * figsize)) #(5*n_cols+5, 5*n_rows))
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(n_cols * figsize + figsize * wspace * (n_cols - 1), n_rows * figsize)
+    )  # (5*n_cols+5, 5*n_rows))
 
     for j, ax in enumerate(axes.flatten()):
         if j < n_plots:
             b = _groups[j]
-            adata.obs['tmp'] = adata.obs[color].astype(str)
-            adata.obs.loc[adata.obs[groupby]!=b, 'tmp'] = ''
+            adata.obs["tmp"] = adata.obs[color].astype(str)
+            adata.obs.loc[adata.obs[groupby] != b, "tmp"] = ""
             if cond2 is not None:
-                adata.obs.loc[adata.obs[cond2]!=v2, 'tmp'] = ''
-                groups = list(adata[(adata.obs[groupby]==b) & 
-                                    (adata.obs[cond2]==v2)].obs[color].astype('category').cat.categories.values)
-                size = max(size, 12000/len(adata[(adata.obs[groupby]==b) & (adata.obs[cond2]==v2)]))
+                adata.obs.loc[adata.obs[cond2] != v2, "tmp"] = ""
+                groups = list(
+                    adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]
+                    .obs[color]
+                    .astype("category")
+                    .cat.categories.values
+                )
+                size = max(size, 12000 / len(adata[(adata.obs[groupby] == b) & (adata.obs[cond2] == v2)]))
             else:
-                groups = list(adata[adata.obs[groupby]==b].obs[color].astype('category').cat.categories.values)
-                size = max(size, 12000/len(adata[adata.obs[groupby]==b]))
-            adata.obs['tmp'] = adata.obs['tmp'].astype('category')
+                groups = list(adata[adata.obs[groupby] == b].obs[color].astype("category").cat.categories.values)
+                size = max(size, 12000 / len(adata[adata.obs[groupby] == b]))
+            adata.obs["tmp"] = adata.obs["tmp"].astype("category")
             if color_map is not None:
-                palette = [color_map[i] if i in color_map else 'gray' for i in adata.obs['tmp'].cat.categories]
+                palette = [color_map[i] if i in color_map else "gray" for i in adata.obs["tmp"].cat.categories]
             else:
                 palette = None
 
-            title = b if cond2 is None else v2+sep+b
+            title = b if cond2 is None else (v2 if v2 is not None else "") + sep + b
 
-            ax = sc.pl.embedding(adata, color='tmp', basis=basis, groups=groups, ax=ax, title=title, palette=palette, size=size, 
-                    legend_loc=legend_loc, legend_fontsize=legend_fontsize, legend_fontweight=legend_fontweight, wspace=wspace, show=False, **kwargs)
+            ax = sc.pl.embedding(
+                adata,
+                color="tmp",
+                basis=basis,
+                groups=groups,
+                ax=ax,
+                title=title,
+                palette=palette,
+                size=size,
+                legend_loc=legend_loc,
+                legend_fontsize=legend_fontsize,
+                legend_fontweight=legend_fontweight,
+                wspace=wspace,
+                show=False,
+                **kwargs,
+            )
             # ax.set_aspect('equal')
             # ax.set_aspect('equal', adjustable='box')
-            
-            del adata.obs['tmp']
-            del adata.uns['tmp_colors']
+
+            del adata.obs["tmp"]
+            del adata.uns["tmp_colors"]
         else:
             fig.delaxes(ax)
 
     plt.subplots_adjust(wspace=wspace)
 
-
     if save:
-        plt.savefig(save, bbox_inches='tight')
+        plt.savefig(save, bbox_inches="tight")
 
 
-def plot_expr(adata, gene, groupby='batch', category=None, n_cols=5, size=40, **kwargs):
+def plot_expr(adata, gene, groupby="batch", category=None, n_cols=5, size=40, **kwargs):
     vmax = adata[:, gene].X.max() if adata.raw is None else adata.raw[:, gene].X.max()
     if category is not None:
-        batches = np.unique(adata.obs.loc[adata.obs['category'] == category, groupby])
+        batches = np.unique(adata.obs.loc[adata.obs["category"] == category, groupby])
     else:
         batches = np.unique(adata.obs[groupby])
-    n_plots = len(batches)  
+    n_plots = len(batches)
     n_rows = (n_plots + n_cols - 1) // n_cols  # Calculate number of rows
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
-    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
+
     for i, ax in enumerate(axes.flatten()):
         if i < n_plots:
-            current_batch_mask = adata.obs[groupby] == batches[i] #if category is None else (adata.obs[groupby] == batches[i]) & (adata.obs['category'] == category)
-            size = max(size, 6000/len(adata[current_batch_mask]))
-    
+            current_batch_mask = (
+                adata.obs[groupby] == batches[i]
+            )  # if category is None else (adata.obs[groupby] == batches[i]) & (adata.obs['category'] == category)
+            size = max(size, 6000 / len(adata[current_batch_mask]))
+
             # Plot all cells in gray as the background
             sc.pl.umap(adata, color=None, size=size, show=False, alpha=0.2, ax=ax)
-        
+
             # Plot only the current batch with gene expression
-            sc.pl.umap(adata[current_batch_mask], color=gene, size=size, vmax=vmax, ax=ax, show=False, title=batches[i],  **kwargs)
+            sc.pl.umap(
+                adata[current_batch_mask],
+                color=gene,
+                size=size,
+                vmax=vmax,
+                ax=ax,
+                show=False,
+                title=batches[i],
+                **kwargs,
+            )
         else:
             fig.delaxes(ax)
     # Show the final overlayed plot
@@ -138,19 +170,19 @@ def plot_expr(adata, gene, groupby='batch', category=None, n_cols=5, size=40, **
 
 
 def plot_meta(
-        adata, 
-        use_rep='latent', 
-        color='celltype', 
-        batch='batch', 
-        colors=None, 
-        cmap='Blues', 
-        vmax=1, 
-        vmin=0, 
-        mask=True,
-        annot=False, 
-        save=None, 
-        fontsize=8
-    ):
+    adata,
+    use_rep="latent",
+    color="celltype",
+    batch="batch",
+    colors=None,
+    cmap="Blues",
+    vmax=1,
+    vmin=0,
+    mask=True,
+    annot=False,
+    save=None,
+    fontsize=8,
+):
     """
     Plot meta correlations among batches
 
@@ -183,11 +215,11 @@ def plot_meta(
     name = []
     color_list = []
 
-    adata.obs[color] = adata.obs[color].astype('category')
+    adata.obs[color] = adata.obs[color].astype("category")
     batches = np.unique(adata.obs[batch])
     if colors is None:
         colors = sns.color_palette("tab10", len(np.unique(adata.obs[batch])))
-    for i,b in enumerate(batches):
+    for i, b in enumerate(batches):
         for cat in adata.obs[color].cat.categories:
             index = np.where((adata.obs[color] == cat) & (adata.obs[batch] == b))[0]
             if len(index) > 0:
@@ -199,45 +231,54 @@ def plot_meta(
                     meta.append(adata.X[index].mean(0))
                 name.append(cat)
                 color_list.append(colors[i])
-    
-    
+
     meta = np.stack(meta)
     plt.figure(figsize=(10, 10))
     corr = np.corrcoef(meta)
     if mask:
         mask = np.zeros_like(corr)
         mask[np.triu_indices_from(mask, k=1)] = True
-    grid = sns.heatmap(corr, mask=mask, xticklabels=name, yticklabels=name, annot=annot, # name -> []
-                cmap=cmap, square=True, cbar=True, vmin=vmin, vmax=vmax)
-    [ tick.set_color(c) for tick,c in zip(grid.get_xticklabels(),color_list) ]
-    [ tick.set_color(c) for tick,c in zip(grid.get_yticklabels(),color_list) ]
-    plt.xticks(rotation=45, horizontalalignment='right', fontsize=fontsize)
+    grid = sns.heatmap(
+        corr,
+        mask=mask,
+        xticklabels=name,
+        yticklabels=name,
+        annot=annot,  # name -> []
+        cmap=cmap,
+        square=True,
+        cbar=True,
+        vmin=vmin,
+        vmax=vmax,
+    )
+    [tick.set_color(c) for tick, c in zip(grid.get_xticklabels(), color_list)]
+    [tick.set_color(c) for tick, c in zip(grid.get_yticklabels(), color_list)]
+    plt.xticks(rotation=45, horizontalalignment="right", fontsize=fontsize)
     plt.yticks(fontsize=fontsize)
 
     if save:
-        plt.savefig(save, bbox_inches='tight')
+        plt.savefig(save, bbox_inches="tight")
     else:
         plt.show()
 
 
 def plot_meta2(
-        adata, 
-        use_rep='latent', 
-        color='cell_type', 
-        batch='batch', 
-        groupby='cell_type',
-        color_map=None, 
-        figsize=(10, 10), 
-        cmap='Blues',
-        batches=None, 
-        annot=False, 
-        save=None, 
-        cbar=True, 
-        keep=False, 
-        fontsize=16, 
-        vmin=0, 
-        vmax=1
-    ):
+    adata,
+    use_rep="latent",
+    color="cell_type",
+    batch="batch",
+    groupby="cell_type",
+    color_map=None,
+    figsize=(10, 10),
+    cmap="Blues",
+    batches=None,
+    annot=False,
+    save=None,
+    cbar=True,
+    keep=False,
+    fontsize=16,
+    vmin=0,
+    vmax=1,
+):
     """
     Plot meta correlations between two batches
 
@@ -267,15 +308,16 @@ def plot_meta2(
         font size
     """
     import matplotlib as mpl
-    mpl.rcParams['axes.grid'] = False
+
+    mpl.rcParams["axes.grid"] = False
     # mpl.rcParams.update(mpl.rcParamsDefault)
 
     meta = []
     name = []
 
-    if adata.obs[color].dtype != 'category':
-        adata.obs[color] = adata.obs[color].astype('category')
-    
+    if adata.obs[color].dtype != "category":
+        adata.obs[color] = adata.obs[color].astype("category")
+
     if batches is None:
         batches = np.unique(adata.obs[batch])  # print(batches)
 
@@ -331,14 +373,10 @@ def plot_meta2(
     plt.ylabel(batches[1], fontsize=fontsize)
 
     if save:
-        plt.savefig(save, bbox_inches='tight')
+        plt.savefig(save, bbox_inches="tight")
     else:
         plt.show()
-        
 
-        
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, f1_score
 
 def reassign_cluster_with_ref(Y_pred, Y):
     """
@@ -422,9 +460,6 @@ def plot_confusion(y, y_pred, save=None, cmap="Blues"):
     return f1, nmi, ari
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 def plot_subplots(n_panels, ncols=3):
     """
     Plot subplots dynamically based on the number of panels and columns.
@@ -445,8 +480,8 @@ def plot_subplots(n_panels, ncols=3):
     # Plot data in each panel
     for i in range(n_panels):
         ax = axes[i]
-        ax.plot(np.random.rand(10), label=f'Panel {i+1}')
-        ax.set_title(f'Panel {i+1}')
+        ax.plot(np.random.rand(10), label=f"Panel {i + 1}")
+        ax.set_title(f"Panel {i + 1}")
         ax.legend()
 
     # Hide empty panels
@@ -457,14 +492,9 @@ def plot_subplots(n_panels, ncols=3):
     plt.tight_layout()
     plt.show()
 
+
 # Example usage
 # plot_subplots(n_panels=10, ncols=3)
-
-
-
-
-
-
 
 
 def plot_radar(df, save=None, vmax=1):
@@ -474,42 +504,55 @@ def plot_radar(df, save=None, vmax=1):
     data = df.values.tolist()
     N = len(categories)
     M = len(labels)
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', 
-            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',][:M]
-    
+    colors = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+    ][:M]
+
     # Compute angle for each axis
-    angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
     angles += angles[:1]  # close the circle
-    
-    fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
-    
+
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+
     # Plot each group
     for values, label, color in zip(data, labels, colors):
         values += values[:1]  # close the polygon
         ax.plot(angles, values, color=color, linewidth=2, label=label)
         ax.fill(angles, values, color=color, alpha=0.2)
-    
+
     # Fix axis to go in correct order and labels
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(categories)
-    
+
     # Add radial labels
     ax.set_rlabel_position(30)
     # plt.yticks([-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2], color="grey", size=8)
     plt.yticks([0, 0.2, 0.4, 0.6, 0.8, 1], color="grey", size=8)
     plt.ylim(0, 1)
     # plt.ylim(-vmax, vmax)
-    
+
     # Legend
     plt.legend(loc="right", bbox_to_anchor=(1.4, 0.5))
     if save is not None:
-        plt.savefig(save, bbox_inches='tight')
+        plt.savefig(save, bbox_inches="tight")
     else:
         plt.show()
-
-
-
-
-

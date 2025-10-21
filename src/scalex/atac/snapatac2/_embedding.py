@@ -1,11 +1,11 @@
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import eigsh
-from sklearn.utils.extmath import randomized_svd
 import logging
 from typing import Optional, Tuple
 
 logging.basicConfig(level=logging.INFO)
+
 
 def normalize(matrix: sp.csr_matrix, feature_weights: np.ndarray) -> None:
     """
@@ -20,6 +20,7 @@ def normalize(matrix: sp.csr_matrix, feature_weights: np.ndarray) -> None:
 
     return matrix
 
+
 def compute_idf(matrix: sp.csr_matrix) -> np.ndarray:
     """
     Computes the inverse document frequency (IDF) for feature weighting.
@@ -29,12 +30,13 @@ def compute_idf(matrix: sp.csr_matrix) -> np.ndarray:
     idf_values = np.log(n_docs / (doc_count + 1))  # Avoid division by zero
     return idf_values
 
+
 def spectral_embedding(
     anndata: sp.csr_matrix,
     selected_features: np.ndarray,
     n_components: int,
     random_state: int,
-    feature_weights: Optional[np.ndarray] = None
+    feature_weights: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform spectral embedding using matrix factorization.
@@ -53,6 +55,7 @@ def spectral_embedding(
     evals, evecs = eigsh(matrix, k=n_components, which="LM", random_state=random_state)
     return evals, evecs
 
+
 def spectral_embedding_nystrom(
     anndata: sp.csr_matrix,
     selected_features: np.ndarray,
@@ -60,7 +63,7 @@ def spectral_embedding_nystrom(
     sample_size: int,
     weighted_by_degree: bool,
     chunk_size: int,
-    feature_weights: Optional[np.ndarray] = None
+    feature_weights: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform spectral embedding using the Nystrom method.
@@ -72,13 +75,13 @@ def spectral_embedding_nystrom(
     # Compute feature weighting
     if feature_weights is None:
         feature_weights = compute_idf(matrix)
-    
+
     matrix = normalize(matrix, feature_weights)
 
     # Sample landmarks
     n_samples = matrix.shape[0]
     rng = np.random.default_rng(2023)
-    
+
     if weighted_by_degree:
         degree_weights = np.array(matrix.sum(axis=1)).flatten()
         degree_weights /= degree_weights.sum()
@@ -96,12 +99,9 @@ def spectral_embedding_nystrom(
 
     return evals, full_matrix
 
+
 def multi_spectral_embedding(
-    anndatas: list,
-    selected_features: list,
-    weights: list,
-    n_components: int,
-    random_state: int
+    anndatas: list, selected_features: list, weights: list, n_components: int, random_state: int
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform multi-view spectral embedding by concatenating feature spaces.

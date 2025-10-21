@@ -8,7 +8,6 @@
 
 from glob import glob
 from pathlib import Path
-from typing import Final, Iterable, Literal
 
 import anndata as ad
 import numpy as np
@@ -16,25 +15,18 @@ import pandas as pd
 import scanpy as sc
 import scipy
 from loguru import logger
-from muon import prot as pt
-from scipy.sparse import csr, issparse
-from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler
+from scipy.sparse import csr_array, issparse
+from sklearn.preprocessing import MaxAbsScaler
 from torch import Generator
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import Sampler
-from torch.utils.data import DataLoader
 
 from anndata import AnnData, concat
-import scanpy as sc
-from sklearn.preprocessing import maxabs_scale, MaxAbsScaler
-from pathlib import Path
-import logging
 
 
-from glob import glob
 
-DATA_PATH = os.path.expanduser("~")+'/.scalex/'
-GENOME_PATH = os.path.expanduser("~")+'/.cache/genome/'
+DATA_PATH = os.path.expanduser("~") + "/.scalex/"
+GENOME_PATH = os.path.expanduser("~") + "/.cache/genome/"
 CHUNK_SIZE = 20000
 
 
@@ -85,20 +77,21 @@ def load_file(path: str | Path) -> ad.AnnData:
     AnnData
     """
     print(path)
-    if os.path.exists(DATA_PATH+path+'.h5ad'):
-        adata = sc.read_h5ad(DATA_PATH+path+'.h5ad', backed=backed)
-    elif path.endswith(tuple(['.h5mu/rna', '.h5mu/atac', 'h5mu/prot', 'h5mu/adt'])):
+    if os.path.exists(DATA_PATH + path + ".h5ad"):
+        adata = sc.read_h5ad(DATA_PATH + path + ".h5ad", backed=backed)
+    elif path.endswith(tuple([".h5mu/rna", ".h5mu/atac", "h5mu/prot", "h5mu/adt"])):
         import muon as mu
-        adata = mu.read(path, backed=backed) 
-    elif os.path.isdir(path): # mtx format
+
+        adata = mu.read(path, backed=backed)
+    elif os.path.isdir(path):  # mtx format
         adata = read_mtx(path)
     elif os.path.isfile(path):
-        if path.endswith(('.csv', '.csv.gz')):
+        if path.endswith((".csv", ".csv.gz")):
             adata = sc.read_csv(path).T
-        elif path.endswith(('.txt', '.txt.gz', '.tsv', '.tsv.gz')):
-            df = pd.read_csv(path, sep='\t', index_col=0).T
+        elif path.endswith((".txt", ".txt.gz", ".tsv", ".tsv.gz")):
+            df = pd.read_csv(path, sep="\t", index_col=0).T
             adata = AnnData(df.values, dict(obs_names=df.index.values), dict(var_names=df.columns.values))
-        elif path.endswith('.h5ad'):
+        elif path.endswith(".h5ad"):
             adata = sc.read_h5ad(path)
         # elif path.endswith('.h5mu'):
         #     import muon as mu
@@ -106,20 +99,20 @@ def load_file(path: str | Path) -> ad.AnnData:
         #     mdata = mu.read(path)
         #     rna = mdata.mod['rna']
         #     atac = mdata.mod['atac']
-            
-            # gene_activity = gene_score(atac, rna_var=None, gene_region='combined')
-            
-            # rna.var_names_make_unique()
-            # gene_activity.var_names_make_unique()
 
-            # return AnnData.concatenate(rna, gene_activity, join='inner', batch_key='batch',
-            #                         batch_categories=['RNA', 'ATAC'], index_unique=None) 
+        # gene_activity = gene_score(atac, rna_var=None, gene_region='combined')
+
+        # rna.var_names_make_unique()
+        # gene_activity.var_names_make_unique()
+
+        # return AnnData.concatenate(rna, gene_activity, join='inner', batch_key='batch',
+        #                         batch_categories=['RNA', 'ATAC'], index_unique=None)
     else:
-        msg = f"File {data_path} does not exist"
+        msg = f"File {DATA_PATH} does not exist"
         raise ValueError(msg)
 
     if not issparse(adata.X):
-        adata.X = scipy.sparse.csr_matrix(adata.X)
+        adata.X = csr_array(adata.X)
     adata.var_names_make_unique()
     return adata
 
@@ -137,7 +130,6 @@ def load_files(root) -> ad.AnnData:
     ------
     AnnData
     """
-    if root.split("/")[-1] != "*":
     if root.split("/")[-1] != "*":
         return load_file(root)
     adatas = [load_file(_) for _ in sorted(glob(root))]
@@ -181,31 +173,32 @@ def concat_data(data_list, batch_categories=None, join="inner", batch_key="batch
         else:
             adata = load_files(root)
         adata_list.append(adata)
-        
+
     #     batch_categories = list(map(str, range(len(adata_list))))
     # else:
     #     assert len(adata_list) == len(batch_categories)
 
     adata_concat = concat(adata_list, join=join, label=batch_key, keys=batch_categories, index_unique=index_unique)
     if batch_categories is None:
-        adata_concat.obs['batch'] = 'batch'
+        adata_concat.obs["batch"] = "batch"
     return adata_concat
     # [print(b, adata.shape) for adata,b in zip(adata_list, batch_categories)]
     # concat = AnnData.concatenate(*adata_list, join=join, batch_key=batch_key,
-                                # batch_categories=batch_categories, index_unique=index_unique)  
+    # batch_categories=batch_categories, index_unique=index_unique)
     # if save:
-        # concat.write(save, compression='gzip')
+    # concat.write(save, compression='gzip')
     # return concat
 
-def aggregate_data(rna, groupby='cell_type', processed=False, scale=False):
+
+def aggregate_data(rna, groupby="cell_type", processed=False, scale=False):
     if processed:
         if rna.raw is not None:
             rna = rna.raw.to_adata()
-        rna_agg = sc.get.aggregate(rna, by=groupby, func='mean')
-        rna_agg.X = rna_agg.layers['mean']
+        rna_agg = sc.get.aggregate(rna, by=groupby, func="mean")
+        rna_agg.X = rna_agg.layers["mean"]
     else:
-        rna_agg = sc.get.aggregate(rna, by=groupby, func='sum')
-        rna_agg.X = rna_agg.layers['sum']
+        rna_agg = sc.get.aggregate(rna, by=groupby, func="sum")
+        rna_agg.X = rna_agg.layers["sum"]
 
         sc.pp.normalize_total(rna_agg, target_sum=1e4)
         sc.pp.log1p(rna_agg)
@@ -213,19 +206,20 @@ def aggregate_data(rna, groupby='cell_type', processed=False, scale=False):
     if scale:
         sc.pp.scale(rna_agg, zero_center=True)
     return rna_agg
-    
+
+
 def preprocessing_rna(
-        adata: AnnData, 
-        min_features: int = 600, 
-        min_cells: int = 3, 
-        target_sum: int = 10000, 
-        n_top_features = 2000, # or gene list
-        chunk_size: int = CHUNK_SIZE,
-        min_cell_per_batch: int = 10,
-        keep_mt: bool = False,
-        backed: bool = False,
-        log=None
-    ):
+    adata: AnnData,
+    min_features: int = 600,
+    min_cells: int = 3,
+    target_sum: int = 10000,
+    n_top_features=2000,  # or gene list
+    chunk_size: int = CHUNK_SIZE,
+    min_cell_per_batch: int = 10,
+    keep_mt: bool = False,
+    backed: bool = False,
+    log=None,
+):
     """
     Preprocessing single-cell RNA-seq data
 
@@ -248,9 +242,12 @@ def preprocessing_rna(
     -------
     The AnnData object after preprocessing.
     """
-    if min_features is None: min_features = 600
-    if n_top_features is None: n_top_features = 2000
-    if target_sum is None: target_sum = 10000
+    if min_features is None:
+        min_features = 600
+    if n_top_features is None:
+        n_top_features = 2000
+    if target_sum is None:
+        target_sum = 10000
 
     # adata.layers['count'] = adata.X.copy()
     # batch_counts = adata.obs['batch'].value_counts()
@@ -259,21 +256,23 @@ def preprocessing_rna(
     # print('min_cell_per_batch', min_cell_per_batch)
     # valid_batches = batch_counts[batch_counts >= min_cell_per_batch].index
     # if len(valid_batches) < len(batch_counts):
-        # adata = adata[adata.obs['batch'].isin(valid_batches)].copy()
+    # adata = adata[adata.obs['batch'].isin(valid_batches)].copy()
     # if log: log.info('There are {} batches under batch_name: {}'.format(len(adata.obs['batch'].cat.categories), batch_name))
     # if log: log.info(adata.obs['batch'].value_counts())
-    
-    if log: log.info('Preprocessing')
+
+    if log:
+        log.info("Preprocessing")
     # if not issparse(adata.X):
     if not isinstance(adata.X, csr.csr_matrix) and (not backed) and (not adata.isbacked):
         adata.X = scipy.sparse.csr_matrix(adata.X)
-    
+
     if not keep_mt:
-        if log: log.info('Filtering out MT genes')
-        adata = adata[:, [gene for gene in adata.var_names 
-                    if not str(gene).startswith(tuple(['ERCC', 'MT-', 'mt-']))]]
-    
-    if log: log.info('Filtering cells')
+        if log:
+            log.info("Filtering out MT genes")
+        adata = adata[:, [gene for gene in adata.var_names if not str(gene).startswith(tuple(["ERCC", "MT-", "mt-"]))]]
+
+    if log:
+        log.info("Filtering cells")
     sc.pp.filter_cells(adata, min_genes=min_features)
 
     logger.info("Filtering features")
@@ -285,28 +284,32 @@ def preprocessing_rna(
 
     logger.info("Log1p transforming")
     sc.pp.log1p(adata)
-    
-    adata.raw = adata # keep the normalized and log1p transformed data as raw gene expression for differential expression analysis
 
-    if log: log.info('Finding variable features')
-    if type(n_top_features) == int and n_top_features>0:
-        batch_counts = adata.obs['batch'].value_counts()
+    adata.raw = adata  # keep the normalized and log1p transformed data as raw gene expression for differential expression analysis
+
+    if log:
+        log.info("Finding variable features")
+    if type(n_top_features) == int and n_top_features > 0:
+        batch_counts = adata.obs["batch"].value_counts()
         valid_batches = batch_counts[batch_counts >= min_cell_per_batch].index
         if len(valid_batches) < 2:
             adata_ = adata
         if len(valid_batches) < len(batch_counts):
-            adata_ = adata[adata.obs['batch'].isin(valid_batches)].copy()
+            adata_ = adata[adata.obs["batch"].isin(valid_batches)].copy()
             print(batch_counts[batch_counts >= min_cell_per_batch])
         else:
             adata_ = adata
-        if log: log.info(adata_.obs['batch'].value_counts())
-        sc.pp.highly_variable_genes(adata_, n_top_genes=n_top_features, batch_key='batch') #, inplace=False, subset=True)
+        if log:
+            log.info(adata_.obs["batch"].value_counts())
+        sc.pp.highly_variable_genes(
+            adata_, n_top_genes=n_top_features, batch_key="batch"
+        )  # , inplace=False, subset=True)
         adata = adata[:, adata_.var.highly_variable].copy()
     elif type(n_top_features) != int:
         raw = adata.raw.to_adata()
         adata = reindex(adata, n_top_features)
         adata.raw = raw
-        
+
         sc.pp.highly_variable_genes(adata, n_top_genes=n_top_features, batch_key="batch", inplace=False, subset=True)
     else:
         adata = reindex(adata, n_top_features)
@@ -319,16 +322,16 @@ def preprocessing_rna(
 
 
 def preprocessing_atac(
-        adata: AnnData, 
-        min_features: int = 100, 
-        min_cells: int = 3, 
-        target_sum=None, 
-        n_top_features = 100000, # or gene list
-        chunk_size: int = CHUNK_SIZE,
-        min_cell_per_batch: int = 10,
-        backed: bool = False,
-        log=None
-    ):
+    adata: AnnData,
+    min_features: int = 100,
+    min_cells: int = 3,
+    target_sum=None,
+    n_top_features=100000,  # or gene list
+    chunk_size: int = CHUNK_SIZE,
+    min_cell_per_batch: int = 10,
+    backed: bool = False,
+    log=None,
+):
     """
     Preprocessing single-cell ATAC-seq
 
@@ -351,27 +354,30 @@ def preprocessing_atac(
     -------
     The AnnData object after preprocessing.
     """
-    
-    if min_features is None: min_features = 100
-    if n_top_features is None: n_top_features = 100000
-    if target_sum is None: target_sum = 10000
-    
+
+    if min_features is None:
+        min_features = 100
+    if n_top_features is None:
+        n_top_features = 100000
+    if target_sum is None:
+        target_sum = 10000
+
         # Filter out batches with only one sample
-    batch_counts = adata.obs['batch'].value_counts()
-    print('min_cell_per_batch', min_cell_per_batch)
+    batch_counts = adata.obs["batch"].value_counts()
+    print("min_cell_per_batch", min_cell_per_batch)
     valid_batches = batch_counts[batch_counts >= min_cell_per_batch].index
     if len(valid_batches) < len(batch_counts):
-        adata = adata[adata.obs['batch'].isin(valid_batches)].copy()
+        adata = adata[adata.obs["batch"].isin(valid_batches)].copy()
 
-    if log: log.info('Preprocessing')
-    if type(adata.X) != csr.csr_matrix:
+    if log:
+        log.info("Preprocessing")
     # TODO replace this with snapatac or something from muon
     # episcanpy requires tbb, which fucks with MacOS
     # import episcanpy as epi
 
     logger.info("Preprocessing")
-    if not isinstance(adata.X, csr.csr_matrix):
-        adata.X = scipy.sparse.csr_matrix(adata.X)
+    if not isinstance(adata.X, csr_array):
+        adata.X = csr_array(adata.X)
 
     sc.pp.normalize_total(adata, target_sum=target_sum)
     sc.pp.log1p(adata)
@@ -382,10 +388,11 @@ def preprocessing_atac(
 
     logger.info("Filtering features")
     sc.pp.filter_genes(adata, min_cells=min_cells)
-    
-#     adata.raw = adata
-    if log: log.info('Finding variable features')
-    if type(n_top_features) == int and n_top_features>0 and n_top_features < adata.shape[1]:
+
+    #     adata.raw = adata
+    if log:
+        log.info("Finding variable features")
+    if type(n_top_features) == int and n_top_features > 0 and n_top_features < adata.shape[1]:
         # sc.pp.highly_variable_genes(adata, n_top_genes=n_top_features, batch_key='batch', inplace=False, subset=True)
         # epi.pp.select_var_feature(adata, nb_features=n_top_features, show=False, copy=False)
         # try:
@@ -393,35 +400,37 @@ def preprocessing_atac(
         #     snap.pp.select_features(adata, n_top_features, inplace=True)
         # except:
         from .atac.snapatac2._basic import select_features
+
         select_features(adata, n_top_features, inplace=True)
-        adata = adata[:, adata.var['selected']].copy()
+        adata = adata[:, adata.var["selected"]].copy()
         print(adata.shape)
     elif type(n_top_features) != int:
         adata = reindex(adata, n_top_features)
 
-    
     # if log: log.info('Normalizing total per cell')
     # if target_sum != -1:
-        
-    if log: log.info('Batch specific maxabs scaling')
+
+    if log:
+        log.info("Batch specific maxabs scaling")
     # adata = batch_scale(adata, chunk_size=chunk_size)
     adata.X = MaxAbsScaler().fit_transform(adata.X)
-    if log: log.info('Processed dataset shape: {}'.format(adata.shape))
+    if log:
+        log.info("Processed dataset shape: {}".format(adata.shape))
     return adata
 
 
 def preprocessing_adt(
-        adata: AnnData, 
-        min_features: int = 10, 
-        min_cells: int = 3, 
-        target_sum: int = 10000, 
-        chunk_size: int = CHUNK_SIZE,
-        backed: bool = False,
-        log=None
-    ):
+    adata: AnnData,
+    min_features: int = 10,
+    min_cells: int = 3,
+    target_sum: int = 10000,
+    chunk_size: int = CHUNK_SIZE,
+    backed: bool = False,
+    log=None,
+):
     """
     Preprocessing single-cell RNA-seq data
-    
+
     Parameters
     ----------
     adata
@@ -438,34 +447,39 @@ def preprocessing_adt(
         Number of samples from the same batch to transform. Default: 20000.
     log
         If log, record each operation in the log file. Default: None.
-        
+
     Return
     -------
     The AnnData object after preprocessing.
     """
 
     # adata.layers['count'] = adata.X.copy()
-    batch_counts = adata.obs['batch'].value_counts()
+    batch_counts = adata.obs["batch"].value_counts()
 
     # if log: log.info('There are {} batches under batch_name: {}'.format(len(adata.obs['batch'].cat.categories), batch_name))
-    if log: log.info(adata.obs['batch'].value_counts())
-    
-    if log: log.info('Preprocessing')
+    if log:
+        log.info(adata.obs["batch"].value_counts())
+
+    if log:
+        log.info("Preprocessing")
     # if not issparse(adata.X):
     if type(adata.X) != csr.csr_matrix and (not backed) and (not adata.isbacked):
         adata.X = scipy.sparse.csr_matrix(adata.X)
-    
-    if log: log.info('Filtering cells')
+
+    if log:
+        log.info("Filtering cells")
     sc.pp.filter_cells(adata, min_genes=min_features)
-    
-    if log: log.info('Filtering features')
+
+    if log:
+        log.info("Filtering features")
     sc.pp.filter_genes(adata, min_cells=min_cells)
-    
-    adata.raw = adata # keep the normalized and log1p transformed data as raw gene expression for differential expression analysis
-    
+
+    adata.raw = adata  # keep the normalized and log1p transformed data as raw gene expression for differential expression analysis
+
     # adata.X = clr_normalize(adata.X)
 
-    if log: log.info('Batch specific maxabs scaling')
+    if log:
+        log.info("Batch specific maxabs scaling")
     # adata = batch_scale(adata, chunk_size=chunk_size)
     adata.X = MaxAbsScaler().fit_transform(adata.X)
     logger.info(f"Processed dataset shape: {adata.shape}")
@@ -473,21 +487,21 @@ def preprocessing_adt(
 
 
 def preprocessing(
-        adata: AnnData, 
-        profile: str='RNA',
-        min_features: int = 600, 
-        min_cells: int = 3, 
-        target_sum: int = None, 
-        n_top_features = None, # or gene list
-        min_cell_per_batch: int = 10,
-        keep_mt: bool = False,
-        backed: bool = False,
-        chunk_size: int = CHUNK_SIZE,
-        log=None
-    ):
+    adata: AnnData,
+    profile: str = "RNA",
+    min_features: int = 600,
+    min_cells: int = 3,
+    target_sum: int = None,
+    n_top_features=None,  # or gene list
+    min_cell_per_batch: int = 10,
+    keep_mt: bool = False,
+    backed: bool = False,
+    chunk_size: int = CHUNK_SIZE,
+    log=None,
+):
     """
     Preprocessing single-cell data
-    
+
     Parameters
     ----------
     adata
@@ -506,55 +520,48 @@ def preprocessing(
         Number of samples from the same batch to transform. Default: 20000.
     log
         If log, record each operation in the log file. Default: None.
-        
+
     Return
     -------
     The AnnData object after preprocessing.
-    
+
     """
-    if profile == 'RNA':
+    if profile == "RNA":
         return preprocessing_rna(
-                    adata, 
-                    min_features=min_features, 
-                    min_cells=min_cells, 
-                    target_sum=target_sum,
-                    n_top_features=n_top_features, 
-                    min_cell_per_batch=min_cell_per_batch,
-                    keep_mt=keep_mt,
-                    backed=backed,
-                    chunk_size=chunk_size, 
-                    log=log
-               )
-    elif profile == 'ATAC':
+            adata,
+            min_features=min_features,
+            min_cells=min_cells,
+            target_sum=target_sum,
+            n_top_features=n_top_features,
+            min_cell_per_batch=min_cell_per_batch,
+            keep_mt=keep_mt,
+            backed=backed,
+            chunk_size=chunk_size,
+            log=log,
+        )
+    elif profile == "ATAC":
         return preprocessing_atac(
-                    adata, 
-                    min_features=min_features, 
-                    min_cells=min_cells, 
-                    target_sum=target_sum,
-                    n_top_features=n_top_features, 
-                    min_cell_per_batch=min_cell_per_batch,
-                    chunk_size=chunk_size, 
-                    backed=backed,
-                    log=log
-               )
-    elif profile == 'ADT':
-        return preprocessing_adt(
-                     adata, 
-                     min_features=min_features, 
-                     min_cells=min_cells, 
-                     backed=backed,
-                     log=log
-                )
+            adata,
+            min_features=min_features,
+            min_cells=min_cells,
+            target_sum=target_sum,
+            n_top_features=n_top_features,
+            min_cell_per_batch=min_cell_per_batch,
+            chunk_size=chunk_size,
+            backed=backed,
+            log=log,
+        )
+    elif profile == "ADT":
+        return preprocessing_adt(adata, min_features=min_features, min_cells=min_cells, backed=backed, log=log)
     else:
         raise ValueError("Not support profile: `{}` yet".format(profile))
-    
+
 
 def clr_normalize(matrix):
     """Centered log-ratio normalization across rows (cells)."""
     matrix = matrix + 1  # Avoid log(0)
     geometric_mean = np.exp(np.mean(np.log(matrix), axis=1)).reshape(-1, 1)
     return np.log(matrix / geometric_mean)
-
 
 
 def batch_scale(adata: ad.AnnData) -> ad.AnnData:
@@ -594,15 +601,15 @@ def reindex(adata: ad.AnnData, genes: list[str]) -> ad.AnnData:  # chunk_size=CH
     AnnData
     """
     idx = [i for i, g in enumerate(genes) if g in adata.var_names]
-    print('There are {} gene in selected genes'.format(len(idx)))
+    print("There are {} gene in selected genes".format(len(idx)))
     if len(idx) == len(genes):
         adata = adata[:, genes].copy()
     else:
         new_X = scipy.sparse.lil_matrix((adata.shape[0], len(genes)))
         new_X[:, idx] = adata[:, genes[idx]].copy().X
         # for i in range(new_X.shape[0]//chunk_size+1):
-            # new_X[i*chunk_size:(i+1)*chunk_size, idx] = adata[i*chunk_size:(i+1)*chunk_size, genes[idx]].X
-        adata = AnnData(new_X.tocsr(), obs=adata.obs, var=pd.DataFrame(index=genes)) #{'var_names':genes}) 
+        # new_X[i*chunk_size:(i+1)*chunk_size, idx] = adata[i*chunk_size:(i+1)*chunk_size, genes[idx]].X
+        adata = AnnData(new_X.tocsr(), obs=adata.obs, var=pd.DataFrame(index=genes))  # {'var_names':genes})
     return adata
 
 
@@ -610,14 +617,14 @@ def convert_mouse_to_human(adata):
     """
     Convert mouse gene names to human gene names
     """
-    mapping_file = os.path.join(GENOME_PATH, 'mm10', 'mouse_human_gene_mapping.txt')
-    mappings = pd.read_csv(mapping_file, sep='\t')
+    mapping_file = os.path.join(GENOME_PATH, "mm10", "mouse_human_gene_mapping.txt")
+    mappings = pd.read_csv(mapping_file, sep="\t")
 
-    map_dict = mappings.set_index('mouse')['human'].to_dict()
+    map_dict = mappings.set_index("mouse")["human"].to_dict()
     adata2 = adata[:, pd.notna(adata.var.index.map(map_dict))].copy()
-    adata2.var['human'] = adata2.var_names.map(map_dict)
-    adata2.var['mouse'] = adata2.var_names
-    adata2.var_names = adata2.var['human'].values
+    adata2.var["human"] = adata2.var_names.map(map_dict)
+    adata2.var["mouse"] = adata2.var_names
+    adata2.var_names = adata2.var["human"].values
     adata2.var_names = adata2.var_names.astype(str)
     adata2.var_names_make_unique()
     return adata2
@@ -709,30 +716,30 @@ class SingleCellDataset(Dataset):
 
 
 def load_data(
-        data_list, 
-        batch_categories=None, 
-        profile='RNA',
-        join='inner', 
-        batch_key='batch', 
-        batch_name='batch',
-        groupby=None,
-        subsets=None,
-        min_features=600, 
-        min_cells=3, 
-        target_sum=None,
-        n_top_features=None, 
-        min_cell_per_batch=10,
-        keep_mt=False,
-        backed=False,
-        batch_size=64, 
-        chunk_size=CHUNK_SIZE,
-        fraction=None,
-        n_obs=None,
-        processed=False,
-        log=None,
-        num_workers=4,
-        use_layer='X',
-    ):
+    data_list,
+    batch_categories=None,
+    profile="RNA",
+    join="inner",
+    batch_key="batch",
+    batch_name="batch",
+    groupby=None,
+    subsets=None,
+    min_features=600,
+    min_cells=3,
+    target_sum=None,
+    n_top_features=None,
+    min_cell_per_batch=10,
+    keep_mt=False,
+    backed=False,
+    batch_size=64,
+    chunk_size=CHUNK_SIZE,
+    fraction=None,
+    n_obs=None,
+    processed=False,
+    log=None,
+    num_workers=4,
+    use_layer="X",
+):
     """
     Load dataset with preprocessing
 
@@ -773,34 +780,36 @@ def load_data(
     adata = concat_data(data_list, batch_categories, join=join, batch_key=batch_key)
     if subsets is not None and groupby is not None:
         adata = adata[adata.obs[groupby].isin(subsets)].copy()
-        if log: log.info('Subsets dataset shape: {}'.format(adata.shape))
+        if log:
+            log.info("Subsets dataset shape: {}".format(adata.shape))
 
-    if log: log.info('Raw dataset shape: {}'.format(adata.shape))
-    if batch_name!='batch':
-        if ',' in batch_name:
-            names = batch_name.split(',')
-            adata.obs['batch'] = adata.obs[names[0]].astype(str)+'_'+adata.obs[names[1]].astype(str)
+    if log:
+        log.info("Raw dataset shape: {}".format(adata.shape))
+    if batch_name != "batch":
+        if "," in batch_name:
+            names = batch_name.split(",")
+            adata.obs["batch"] = adata.obs[names[0]].astype(str) + "_" + adata.obs[names[1]].astype(str)
         else:
-            adata.obs['batch'] = adata.obs[batch_name]
-    if 'batch' not in adata.obs:
-        adata.obs['batch'] = 'batch'
-    adata.obs['batch'] = adata.obs['batch'].astype('category')
-    
+            adata.obs["batch"] = adata.obs[batch_name]
+    if "batch" not in adata.obs:
+        adata.obs["batch"] = "batch"
+    adata.obs["batch"] = adata.obs["batch"].astype("category")
+
     if isinstance(n_top_features, str):
         if os.path.isfile(n_top_features):
             n_top_features = np.loadtxt(n_top_features, dtype=str)
         else:
             n_top_features = int(n_top_features)
-    
+
     if n_obs is not None or fraction is not None:
         sc.pp.subsample(adata, fraction=fraction, n_obs=n_obs)
 
-    if not processed and use_layer == 'X':
+    if not processed and use_layer == "X":
         adata = preprocessing(
-            adata, 
+            adata,
             profile=profile,
-            min_features=min_features, 
-            min_cells=min_cells, 
+            min_features=min_features,
+            min_cells=min_cells,
             target_sum=target_sum,
             n_top_features=n_top_features,
             min_cell_per_batch=min_cell_per_batch,
@@ -810,7 +819,7 @@ def load_data(
             log=log,
         )
     else:
-        if use_layer == 'X':
+        if use_layer == "X":
             adata.X = MaxAbsScaler().fit_transform(adata.X)
         elif use_layer in adata.layers:
             adata.layers[use_layer] = MaxAbsScaler().fit_transform(adata.layers[use_layer])
@@ -818,21 +827,26 @@ def load_data(
             adata.obsm[use_layer] = MaxAbsScaler().fit_transform(adata.obsm[use_layer])
         else:
             raise ValueError("Not support use_layer: `{}` yet".format(use_layer))
-        
-    scdata = SingleCellDataset(adata, use_layer=use_layer) # Wrap AnnData into Pytorch Dataset
+
+    scdata = SingleCellDataset(adata, use_layer=use_layer)  # Wrap AnnData into Pytorch Dataset
     trainloader = DataLoader(
-        scdata, batch_size=batch_size, drop_last=True, num_workers=4, #shuffle=True
+        scdata,
+        batch_size=batch_size,
+        drop_last=True,
+        num_workers=4,  # shuffle=True
         generator=Generator(device=device),
     )
     batch_sampler = BatchSampler(batch_size, adata.obs["batch"], drop_last=False)
-    testloader = DataLoader(scdata, batch_sampler=batch_sampler,generator=Generator(device=device),)
+    testloader = DataLoader(
+        scdata,
+        batch_sampler=batch_sampler,
+        generator=Generator(device=device),
+    )
     testloader = DataLoader(
         scdata, batch_sampler=batch_sampler, generator=Generator(device=device), num_workers=num_workers
     )
 
     return adata, trainloader, testloader
-
-
 
 
 def download_file(url, local_filename):
@@ -860,6 +874,6 @@ def download_file(url, local_filename):
 
 
 def rank_dict(adata, cell_type=None):
-    if 'rank_genes_groups' not in adata.uns:
+    if "rank_genes_groups" not in adata.uns:
         sc.tl.rank_genes_groups(adata, cell_type)
-    return pd.DataFrame(adata.uns['rank_genes_groups']['names']).head().to_dict(orient='list')
+    return pd.DataFrame(adata.uns["rank_genes_groups"]["names"]).head().to_dict(orient="list")

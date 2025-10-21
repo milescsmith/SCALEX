@@ -10,7 +10,6 @@
 
 import numpy as np
 import torch
-from loguru import logger
 
 
 def onehot(y, n):

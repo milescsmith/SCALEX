@@ -9,7 +9,6 @@
 """
 
 from collections import defaultdict
-from collections import defaultdict
 
 import numpy as np
 import torch
@@ -17,15 +16,8 @@ from torch import nn
 from torch.nn.functional import binary_cross_entropy
 from tqdm.auto import tqdm, trange
 
-import numpy as np
-import torch
 from loguru import logger
-from torch import nn
-from torch.nn.functional import binary_cross_entropy  # , cosine_similarity
-from tqdm.auto import tqdm, trange
 
-from scalex.net.layer import NN, Encoder
-from scalex.net.loss import kl_div
 from scalex.net.layer import NN, Encoder
 from scalex.net.loss import kl_div
 
@@ -69,7 +61,6 @@ class VAE(nn.Module):
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
         model_dict.update(pretrained_dict)
         self.load_state_dict(model_dict)
-        
 
     def forward(self, x, y):
         x, y = x.float(), y.long()
@@ -78,21 +69,13 @@ class VAE(nn.Module):
         z, mu, var = self.encoder(x)
         recon_x = self.decoder(z, y)
         recon_loss = F.binary_cross_entropy(recon_x, x) * x.size(-1)  ## TO DO
-        kl_loss = kl_div(mu, var) 
+        kl_loss = kl_div(mu, var)
 
         # acc.append(pearson_corr_coef(recon_x, x))
-        loss = {'recon_loss':recon_loss, 'kl_loss':0.5*kl_loss} 
+        loss = {"recon_loss": recon_loss, "kl_loss": 0.5 * kl_loss}
         return z, recon_x, loss
 
-    def encodeBatch(
-            self, 
-            dataloader, 
-            device='cuda', 
-            out='latent', 
-            batch_id=None,
-            return_idx=False, 
-            eval=False
-        ):
+    def encodeBatch(self, dataloader, device="cuda", out="latent", batch_id=None, return_idx=False, eval=False):
         """
         Inference
 
@@ -116,7 +99,6 @@ class VAE(nn.Module):
         Inference layer and sample index (if return_idx=True).
         """
         self.to(device)
-        if evaluate:
         if evaluate:
             self.eval()
         else:
@@ -187,9 +169,7 @@ class VAE(nn.Module):
                     # loss
                     z, mu, var = self.encoder(x)
                     recon_x = self.decoder(z, y)
-                    recon_loss = binary_cross_entropy(recon_x, x) * x.size(
-                        -1
-                    )  ## TO DO
+                    recon_loss = binary_cross_entropy(recon_x, x) * x.size(-1)  ## TO DO
                     kl_loss = kl_div(mu, var)
 
                     loss = {"recon_loss": recon_loss, "kl_loss": 0.5 * kl_loss}
@@ -199,7 +179,6 @@ class VAE(nn.Module):
                     sum(loss.values()).backward()
                     optim.step()
 
-                    for k in loss:
                     for k in loss:
                         epoch_loss[k] += loss[k].item()
 

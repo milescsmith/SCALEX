@@ -1,9 +1,6 @@
 import pytest
 
-import scalex
-from scalex.function import SCALEX
 from scalex.net.vae import VAE
-from scalex.data import preprocessing_rna
 
 import torch
 
@@ -14,16 +11,16 @@ import torch
 
 
 def test_scalex_forward(adata_test):
-    n_domain = len(adata_test.obs['batch'].astype('category').cat.categories)
+    n_domain = len(adata_test.obs["batch"].astype("category").cat.categories)
     x_dim = adata_test.X.shape[1]
 
     # model config
-    enc = [['fc', 1024, 1, 'relu'],['fc', 10, '', '']]  # TO DO
-    dec = [['fc', x_dim, n_domain, 'sigmoid']]
+    enc = [["fc", 1024, 1, "relu"], ["fc", 10, "", ""]]  # TO DO
+    dec = [["fc", x_dim, n_domain, "sigmoid"]]
     model = VAE(enc, dec, n_domain=n_domain)
-    
+
     x = torch.Tensor(adata_test.X)
-    y = torch.LongTensor(adata_test.obs['batch'].values)
+    y = torch.LongTensor(adata_test.obs["batch"].values)
     z, recon_x, loss = model(x, y)
     # Print a summary of the AnnData object
     assert z.shape == (adata_test.shape[0], 10)
@@ -40,5 +37,5 @@ def test_scalex_forward(adata_test):
 #     assert 'X_scalex_umap' in out.obsm
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])

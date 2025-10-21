@@ -14,17 +14,19 @@ from anndata import AnnData
 from ._knn import knn
 from scanpy.tl import leiden
 # import snapatac2._snapatac2 as internal
-# from snapatac2._utils import is_anndata 
+# from snapatac2._utils import is_anndata
 # from snapatac2.tools import leiden
 # from snapatac2.preprocessing import knn
 
-__all__ = ['aggregate_X', 'aggregate_cells']
+__all__ = ["aggregate_X", "aggregate_cells"]
+
 
 def is_anndata(adata):
     """
     Check if the input is an AnnData object.
     """
     return isinstance(adata, AnnData)
+
 
 def aggregate_X(
     adata: AnnData,
@@ -60,6 +62,7 @@ def aggregate_X(
     from anndata import AnnData
 
     adata = adata.copy()
+
     def norm(x):
         if normalize is None:
             return x
@@ -86,7 +89,7 @@ def aggregate_X(
         result = {x: np.zeros(adata.n_vars) for x in natsorted(np.unique(groups))}
         for chunk, start, stop in adata.chunked_X(2000):
             for i in range(start, stop):
-                result[groups[i]] += chunk[i-start, :]
+                result[groups[i]] += chunk[i - start, :]
         for k in result.keys():
             result[k] = norm(np.ravel(result[k]))
 
@@ -100,13 +103,14 @@ def aggregate_X(
         out_adata.var_names = adata.var_names
         return out_adata
 
+
 def aggregate_cells(
     adata: AnnData | np.ndarray,
-    use_rep: str = 'X_spectral',
+    use_rep: str = "X_spectral",
     target_num_cells: int | None = None,
     min_cluster_size: int = 50,
     random_state: int = 0,
-    key_added: str = 'pseudo_cell',
+    key_added: str = "pseudo_cell",
     inplace: bool = True,
 ) -> np.ndarray | None:
     """Aggregate cells into pseudo-cells.
@@ -136,9 +140,15 @@ def aggregate_cells(
         If `inplace=False`, return the result as a numpy array.
         Otherwise, store the result in `adata.obs[`key_added`]`.
     """
+
     def clustering(data):
-        return leiden(knn(data), resolution=1, objective_function='modularity',
-            min_cluster_size=min_cluster_size, random_state=random_state)
+        return leiden(
+            knn(data),
+            resolution=1,
+            objective_function="modularity",
+            min_cluster_size=min_cluster_size,
+            random_state=random_state,
+        )
 
     if is_anndata(adata):
         X = adata.obsm[use_rep]
@@ -150,7 +160,7 @@ def aggregate_cells(
         target_num_cells = X.shape[0] // min_cluster_size
 
     logging.info("Perform initial clustering ...")
-    membership = clustering(X).astype('object')
+    membership = clustering(X).astype("object")
     cluster_ids = [x for x in np.unique(membership) if x != "-1"]
     ids_next = cluster_ids
     n_clusters = len(cluster_ids)
@@ -180,13 +190,15 @@ def aggregate_cells(
 
     if inplace:
         import polars
+
         adata.obs[key_added] = polars.Series(
             [str(x) for x in membership],
             dtype=polars.datatypes.Categorical,
         )
     else:
         return membership
- 
+
+
 def marker_enrichment(
     gene_matrix: AnnData,
     groupby: str | list[str],
@@ -220,23 +232,28 @@ def marker_enrichment(
         else:
             removed.append(key)
     if len(removed) > 0:
-        logging.warn("The following cell types are not annotated because they have less than {} marker genes: {}", min_num_markers, removed)
+        logging.warn(
+            "The following cell types are not annotated because they have less than {} marker genes: {}",
+            min_num_markers,
+            removed,
+        )
 
     aggr_counts = aggregate_X(gene_matrix, groupby=groupby, normalize="RPM")
     zscores = zscore(
         np.log2(np.vstack(list(aggr_counts.values())) + 1),
-        axis = 0,
+        axis=0,
     )
 
     if hierarchical:
         return _hierarchical_enrichment(dict(retained), zscores)
     else:
         df = pl.DataFrame(
-            np.vstack([zscores[:, genes].mean(axis = 1) for _, genes in retained]),
-            columns = list(aggr_counts.keys()),
+            np.vstack([zscores[:, genes].mean(axis=1) for _, genes in retained]),
+            columns=list(aggr_counts.keys()),
         )
         df.insert_at_idx(0, pl.Series("Cell type", [cell_type for cell_type, _ in retained]))
         return df
+
 
 def _hierarchical_enrichment(
     marker_genes,
@@ -244,7 +261,7 @@ def _hierarchical_enrichment(
 ):
     from scipy.cluster.hierarchy import linkage, to_tree
     from collections import Counter
-    
+
     def jaccard_distances(x):
         def jaccard(a, b):
             a = set(a)
@@ -254,12 +271,12 @@ def _hierarchical_enrichment(
         result = []
         n = len(x)
         for i in range(n):
-            for j in range(i+1, n):
+            for j in range(i + 1, n):
                 result.append(jaccard(x[i], x[j]))
         return result
 
     def make_tree(Z, genes, labels):
-        def get_genes_weighted(node, node2 = None):
+        def get_genes_weighted(node, node2=None):
             leaves = node.pre_order(lambda x: x.id)
             if node2 is not None:
                 leaves = leaves + node2.pre_order(lambda x: x.id)
@@ -268,7 +285,7 @@ def _hierarchical_enrichment(
             for key in count.keys():
                 count[key] /= n
             return count
-        
+
         def normalize_weights(a, b):
             a_ = []
             for k, v in a.items():
@@ -277,7 +294,7 @@ def _hierarchical_enrichment(
                 if v > 0:
                     a_.append((k, v))
             return a_
-        
+
         def process(pid, x, score):
             scores.append(score)
             parents.append(pid)
@@ -286,7 +303,7 @@ def _hierarchical_enrichment(
                 labels_.append(labels[x.id])
             else:
                 labels_.append("")
-            go(x)     
+            go(x)
 
         def norm(b, x):
             return np.sqrt(np.exp(b) * np.exp(x))
@@ -295,7 +312,7 @@ def _hierarchical_enrichment(
             def sc_fn(gene_w):
                 if len(gene_w) > 0:
                     idx, ws = zip(*gene_w)
-                    return np.average(zscores[:, list(idx)], axis = 1, weights=list(ws))
+                    return np.average(zscores[:, list(idx)], axis=1, weights=list(ws))
                 else:
                     return np.zeros(zscores.shape[0])
 
@@ -309,7 +326,7 @@ def _hierarchical_enrichment(
                 sc_right = sc_fn(normalize_weights(genes_right, genes_left))
                 process(tr.id, left, norm(base, sc_left))
                 process(tr.id, right, norm(base, sc_right))
-                
+
         root = to_tree(Z)
         ids = [root.id]
         parents = [""]
@@ -319,9 +336,11 @@ def _hierarchical_enrichment(
         return (ids, parents, labels_, np.vstack(scores).T)
 
     jm = jaccard_distances([v for v in marker_genes.values()])
-    Z = linkage(jm, method='average')
+    Z = linkage(jm, method="average")
     return make_tree(
-        Z, list(marker_genes.values()), list(marker_genes.keys()),
+        Z,
+        list(marker_genes.values()),
+        list(marker_genes.keys()),
     )
 
 
@@ -333,14 +352,17 @@ def _groupby(x, groups):
     splits = np.split(np.arange(x.shape[0]), indices[1:])
     return dict((label, x[indices, :]) for (label, indices) in zip(u, splits))
 
-def _normalize(x, size_factor = None):
+
+def _normalize(x, size_factor=None):
     result = x / (x.sum() / 1000000.0)
     if size_factor is not None:
         result /= size_factor
     return result
 
+
 def _get_sizes(regions):
     def size(x):
-        x = x.split(':')[1].split("-")
+        x = x.split(":")[1].split("-")
         return int(x[1]) - int(x[0])
+
     return np.array(list(size(x) for x in regions))

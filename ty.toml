@@ -1,0 +1,15 @@
+[rules]
+index-out-of-bounds = "ignore"
+
+[environment]
+root = ["./python", "./src"]
+python = "./.venv"
+python-platform = "linux"
+python-version = "3.12"
+
+[src]
+respect-ignore-files = true
+include = [
+    "python",
+    "test"
+]

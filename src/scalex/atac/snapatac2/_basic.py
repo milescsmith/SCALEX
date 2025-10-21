@@ -1,5 +1,4 @@
 import pybedtools
-import pandas as pd
 from typing import List
 from anndata import AnnData
 import numpy as np
@@ -26,11 +25,8 @@ def _find_most_accessible_features(
     n = idx.size
     n_lower = int(filter_lower_quantile * n)
     n_upper = int(filter_upper_quantile * n)
-    idx = idx[n_lower:n-n_upper]
+    idx = idx[n_lower : n - n_upper]
     return idx[::-1][:total_features]
-
-
-
 
 
 def intersect_bed(regions: List[str], bed_file: str) -> List[bool]:
@@ -60,8 +56,6 @@ def intersect_bed(regions: List[str], bed_file: str) -> List[bool]:
         results.append(bool(query_interval.intersect(bed_intervals, u=True)))
 
     return results
-
-
 
 
 def select_features(
@@ -112,7 +106,7 @@ def select_features(
         None-zero features listed here will be kept regardless of the other
         filtering criteria.
         If a feature is present in both whitelist and blacklist, it will be kept.
-    blacklist 
+    blacklist
         A user provided bed file containing genome-wide blacklist regions.
         Features that are overlapped with these regions will be removed.
     max_iter
@@ -127,7 +121,7 @@ def select_features(
         Number of parallel jobs to use when `adata` is a list.
     verbose
         Whether to print progress messages.
-    
+
     Returns
     -------
     np.ndarray | None:
@@ -138,11 +132,10 @@ def select_features(
 
     count = np.zeros(adata.shape[1])
     for batch, _, _ in adata.chunked_X(2000):
-        count += np.ravel(batch.sum(axis = 0))
-    adata.var['count'] = count
+        count += np.ravel(batch.sum(axis=0))
+    adata.var["count"] = count
 
-    selected_features = _find_most_accessible_features(
-        count, filter_lower_quantile, filter_upper_quantile, n_features)
+    selected_features = _find_most_accessible_features(count, filter_lower_quantile, filter_upper_quantile, n_features)
 
     if blacklist is not None:
         blacklist = np.array(intersect_bed(adata.var_names, str(blacklist)))
@@ -170,7 +163,7 @@ def select_features(
         whitelist = np.array(intersect_bed(adata.var_names, str(whitelist)))
         whitelist &= count != 0
         result |= whitelist
-    
+
     if verbose:
         logging.info(f"Selected {result.sum()} features.")
 

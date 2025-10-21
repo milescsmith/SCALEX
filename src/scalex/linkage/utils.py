@@ -5,10 +5,10 @@ import numpy as np
 def correlation_between_df(df1, df2):
     df1_standardized = (df1 - df1.mean(axis=1).values.reshape(-1, 1)) / df1.std(axis=1).values.reshape(-1, 1)
     df2_standardized = (df2 - df2.mean(axis=1).values.reshape(-1, 1)) / df2.std(axis=1).values.reshape(-1, 1)
-    
+
     # Calculate the correlation matrix
     correlation_matrix = np.dot(df2_standardized.values, df1_standardized.values.T) / df1.shape[1]
-    
+
     # Convert the result to a DataFrame
     correlation_df = pd.DataFrame(correlation_matrix, index=df2.index, columns=df1.index)
     return correlation_df
@@ -56,4 +56,3 @@ def row_wise_correlation(arr1, arr2, epsilon=1e-8):
     correlations = sum_of_products / degrees_of_freedom
 
     return correlations
-

@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import anndata as ad
-import anndata as ad
 import typer
 from rich import print as rprint
 

@@ -6,15 +6,17 @@ import logging
 
 from ._embedding import spectral_embedding, spectral_embedding_nystrom, multi_spectral_embedding
 
+
 def idf(data, features=None):
     n, m = data.shape
     count = np.zeros(m)
     for batch, _, _ in data.chunked_X(2000):
         batch.data = np.ones(batch.indices.shape, dtype=np.float64)
-        count += np.ravel(batch.sum(axis = 0))
+        count += np.ravel(batch.sum(axis=0))
     if features is not None:
         count = count[features]
     return np.log(n / (1 + count))
+
 
 def spectral(
     adata: AnnData,
@@ -39,7 +41,7 @@ def spectral(
     the embedding when `distance_metric` is "cosine", which scales linearly with the
     number of cells. For other types of similarity metrics, the time and space complexity
     scale quadratically with the number of cells.
-    
+
     Note
     ----
     - Determining the appropriate number of components is crucial when performing
@@ -161,15 +163,18 @@ def spectral(
                 S = adata.X.chunk(sample_size, replace=False)
             else:
                 S = sp.sparse.csr_matrix(adata.chunk_X(sample_size, replace=False))
-            if features is not None: S = S[:, features]
+            if features is not None:
+                S = S[:, features]
 
             model.fit(S)
 
             from tqdm import tqdm
-            for batch, _, _ in tqdm(adata.chunked_X(chunk_size), total=math.ceil(adata.n_obs/chunk_size)):
+
+            for batch, _, _ in tqdm(adata.chunked_X(chunk_size), total=math.ceil(adata.n_obs / chunk_size)):
                 if distance_metric == "jaccard":
                     batch.data = np.ones(batch.indices.shape, dtype=np.float64)
-                if features is not None: batch = batch[:, features]
+                if features is not None:
+                    batch = batch[:, features]
                 model.extend(batch)
             evals, evecs = model.transform()
 
@@ -179,50 +184,52 @@ def spectral(
         evecs = evecs[:, idx] * np.sqrt(evals)
 
     if inplace:
-        adata.uns['spectral_eigenvalue'] = evals
-        adata.obsm['X_spectral'] = evecs
+        adata.uns["spectral_eigenvalue"] = evals
+        adata.obsm["X_spectral"] = evecs
     else:
         return (evals, evecs)
 
 
 import numpy as np
 import scipy.sparse as sp
-import pandas as pd
-from scipy.spatial.distance import pdist, squareform
-from scipy.stats import pearsonr, spearmanr
-from typing import List, Optional, Tuple
+from typing import Optional
 
 
-def jaccard_similarity(mat: sp.csr_matrix, other: Optional[sp.csr_matrix] = None, weights: Optional[np.ndarray] = None) -> np.ndarray:
+def jaccard_similarity(
+    mat: sp.csr_matrix, other: Optional[sp.csr_matrix] = None, weights: Optional[np.ndarray] = None
+) -> np.ndarray:
     if other is None:
         intersection = mat.multiply(mat)
         union = mat + mat - intersection
     else:
         intersection = mat.multiply(other)
         union = mat + other - intersection
-    
+
     union.data[union.data == 0] = 1  # Prevent division by zero
     similarity = intersection / union
     return similarity.toarray()
 
+
 # import sklearn.metrics.jaccard_score as jaccard_similarity
 from sklearn.metrics.pairwise import cosine_similarity
+
 
 class Spectral:
     def __init__(
         self,
         out_dim: int = 30,
         distance: Literal["jaccard", "cosine"] = "jaccard",
-        feature_weights = None,
+        feature_weights=None,
     ):
         self.out_dim = out_dim
         self.distance = distance
-        if (self.distance == "jaccard"):
+        if self.distance == "jaccard":
             self.compute_similarity = lambda x, y=None: jaccard_similarity(x, y, feature_weights)
-        elif (self.distance == "cosine"):
+        elif self.distance == "cosine":
             self.compute_similarity = lambda x, y=None: cosine_similarity(x, y, feature_weights)
-        elif (self.distance == "rbf"):
+        elif self.distance == "rbf":
             from sklearn.metrics.pairwise import rbf_kernel
+
             self.compute_similarity = lambda x, y=None: rbf_kernel(x, y)
         else:
             raise ValueError("Invalid distance")
@@ -239,7 +246,7 @@ class Spectral:
             logging.info("Compute similarity matrix")
         A = self.compute_similarity(mat)
 
-        if (self.distance == "jaccard"):
+        if self.distance == "jaccard":
             if verbose > 0:
                 logging.info("Normalization")
             self.coverage = mat.sum(axis=1) / self.in_dim
@@ -259,7 +266,7 @@ class Spectral:
 
         if verbose > 0:
             logging.info("Perform decomposition")
-        evals, evecs = sp.sparse.linalg.eigsh(A, self.out_dim, which='LM')
+        evals, evecs = sp.sparse.linalg.eigsh(A, self.out_dim, which="LM")
         ix = evals.argsort()[::-1]
         self.evals = np.real(evals[ix])
         self.evecs = np.real(evecs[:, ix])
@@ -274,14 +281,13 @@ class Spectral:
 
     def extend(self, data):
         A = self.compute_similarity(self.sample, data)
-        if (self.distance == "jaccard"):
+        if self.distance == "jaccard":
             self.normalizer.normalize(
-                A, self.coverage, data.sum(axis=1) / self.in_dim,
-                clip_min=0, clip_max=self.normalizer.outlier
+                A, self.coverage, data.sum(axis=1) / self.in_dim, clip_min=0, clip_max=self.normalizer.outlier
             )
         self.Q.append(A.T @ self.B)
 
-    def transform(self, orthogonalize = True):
+    def transform(self, orthogonalize=True):
         if len(self.Q) > 0:
             Q = np.concatenate(self.Q, axis=0)
             D_ = np.sqrt(np.multiply(Q, self.evals.reshape(1, -1)) @ Q.sum(axis=0).T)
@@ -291,7 +297,7 @@ class Spectral:
                 # orthogonalization
                 sigma, V = np.linalg.eig(Q.T @ Q)
                 sigma = np.sqrt(sigma)
-                B = np.multiply(V.T, self.evals.reshape((1,-1))) @ V
+                B = np.multiply(V.T, self.evals.reshape((1, -1))) @ V
                 np.multiply(B, sigma.reshape((-1, 1)), out=B)
                 np.multiply(B, sigma.reshape((1, -1)), out=B)
                 evals_new, evecs_new = np.linalg.eig(B)
@@ -307,11 +313,12 @@ class Spectral:
                 self.evecs = Q
         return (self.evals, self.evecs)
 
+
 def orthogonalize(evals, evecs):
     _, sigma, Vt = np.linalg.svd(evecs)
     V = Vt.T
 
-    B = np.multiply(V.T, evals.reshape((1,-1))) @ V
+    B = np.multiply(V.T, evals.reshape((1, -1))) @ V
     np.multiply(B, sigma.reshape((-1, 1)), out=B)
     np.multiply(B, sigma.reshape((1, -1)), out=B)
     evals_new, evecs_new = np.linalg.eig(B)
@@ -324,6 +331,7 @@ def orthogonalize(evals, evecs):
     np.divide(evecs_new, sigma.reshape((-1, 1)), out=evecs_new)
     evecs_new = evecs @ V @ evecs_new
     return (evals_new, evecs_new)
+
 
 class JaccardNormalizer:
     def __init__(self, jm, c):
@@ -344,15 +352,17 @@ class JaccardNormalizer:
             np.clip(jm, a_min=clip_min, a_max=clip_max, out=jm)
         gc.collect()
 
+
 class SpectralMatrixFree:
     """Matrix-free spectral embedding without computing the similarity matrix explicitly.
 
     Only cosine similarity is supported.
     """
+
     def __init__(
         self,
         out_dim: int = 30,
-        feature_weights = None,
+        feature_weights=None,
     ):
         self.out_dim = out_dim
         self.feature_weights = feature_weights
@@ -363,10 +373,10 @@ class SpectralMatrixFree:
         self.sample = mat
         self.in_dim = mat.shape[1]
 
-        s = 1 / np.sqrt(np.ravel(sp.sparse.csr_matrix.power(mat, 2).sum(axis = 1)))
+        s = 1 / np.sqrt(np.ravel(sp.sparse.csr_matrix.power(mat, 2).sum(axis=1)))
         X = sp.sparse.diags(s) @ mat
 
-        D = np.ravel(X @ X.sum(axis = 0).T) - 1
+        D = np.ravel(X @ X.sum(axis=0).T) - 1
         X = sp.sparse.diags(1 / np.sqrt(D)) @ X
         evals, evecs = _eigen(X, 1 / D, k=self.out_dim)
 
@@ -380,10 +390,11 @@ class SpectralMatrixFree:
     def extend(self, data):
         raise NotImplementedError
 
-    def transform(self, orthogonalize = True):
+    def transform(self, orthogonalize=True):
         if len(self.Q) > 0:
             raise NotImplementedError
         return (self.evals, self.evecs)
+
 
 def _eigen(X, D, k):
     def f(v):
@@ -393,8 +404,9 @@ def _eigen(X, D, k):
     A = sp.sparse.linalg.LinearOperator((n, n), matvec=f, dtype=np.float64)
     return sp.sparse.linalg.eigsh(A, k=k)
 
+
 def multi_spectral(
-    adatas: list[AnnData], 
+    adatas: list[AnnData],
     n_comps: int = 30,
     features: str | list[str] | list[np.ndarray] | None = "selected",
     weights: list[float] | None = None,
